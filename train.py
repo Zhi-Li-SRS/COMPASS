@@ -23,7 +23,7 @@ class Trainer:
         self.args = args
         set_seed(42)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.metrics = Metrics()  # Initialize Metrics class
+        self.metrics = Metrics()
 
         self.model = self._prepare_model()
         self.criterion = Loss(use_corr=args.use_corr, corr_weight=args.corr_weight)
@@ -31,7 +31,7 @@ class Trainer:
         self.scheduler = CosineAnnealingLR(self.optimizer, T_max=args.epochs, eta_min=1e-6)
         # Updated data loading
         self.train_loader, self.val_loader, self.class_names = self._prepare_data()
-        # Training tracking
+
         self.best_val_acc = 0.0
         self.best_val_loss = float("inf")
         self.train_losses = []
