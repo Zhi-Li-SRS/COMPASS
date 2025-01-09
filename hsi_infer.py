@@ -1,6 +1,6 @@
 import argparse
 import os
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -11,6 +11,7 @@ import torch
 from scipy import sparse
 from scipy.interpolate import interp1d
 from scipy.sparse.linalg import spsolve
+from tqdm import tqdm
 
 from model import LipidNet
 
@@ -108,63 +109,56 @@ class HSIPredictor:
         f = interp1d(orig_wavenumbers, spectrum, kind="cubic", bounds_error=False, fill_value=0)
         return f(self.wavenumbers)
 
-    def predict_hsi(self, image_path: str, output_dir: str) -> None:
-        """
-        Predict subtypes for HSI data
-
-        Args:
-            image_path: Path to HSI image stack
-            output_dir: Directory to save results
-        """
+    def predict_hsi(self, image_path: str, output_dir: str):
         os.makedirs(output_dir, exist_ok=True)
-
         image = tifffile.imread(image_path)
         assert len(image.shape) == 3, "Input image must be an image stack"
-
         N, height, width = image.shape
-
+        batch_size = 1024
         img_wavenumbers = np.linspace(self.wavenumbers[0], self.wavenumbers[-1], N)
 
+        spectra = image.reshape(N, -1).T  # Reshape to (N, height * width)
         processed_spectra = np.zeros((len(self.wavenumbers), height * width))
-        prediction_maps = {name: np.zeros((height, width)) for name in self.target}
+        predictions = []
         spectra_by_type = {name: [] for name in self.target}
 
         print("Processing spectra...")
-        for i in range(height):
-            for j in range(width):
-                # Get and invert spectrum
-                spectrum = image[:, i, j][::-1]  # Invert order
+        total_batches = (height * width + batch_size - 1) // batch_size
 
-                if np.all(spectrum == 0):
-                    continue
+        for i in tqdm(range(0, height * width, batch_size), total=total_batches, desc="Batch Progress"):
+            batch = spectra[i, i + batch_size]
+            batch = np.array([self.preprocess_spectrum(s) for s in batch])
+            processed_batch = np.array([self.interpolate_spectrum(s, img_wavenumbers) for s in batch])
+            processed_spectra[:, i : i + len(processed_batch)] = processed_batch.T
+            with torch.no_grad():
+                batch_tensor = torch.FloatTensor(processed_batch).to(self.device)
+                batch_tensor = batch_tensor.unsqueeze(1)
+                output = self.model(batch_tensor)
+                probs = torch.softmax(output, dim=1)
+                predictions.append(probs.cpu().numpy())
 
-                spectrum = self.preprocess_spectrum(spectrum)
-
-                spectrum = self.interpolate_spectrum(spectrum, img_wavenumbers)
-
-                idx = i * width + j
-                processed_spectra[:, idx] = spectrum
-
-                # Predict
-                with torch.no_grad():
-                    spectrum_tensor = torch.FloatTensor(spectrum).to(self.device)
-                    spectrum_tensor = spectrum_tensor.unsqueeze(0).unsqueeze(0)
-                    output = self.model(spectrum_tensor)
-                    probs = torch.softmax(output, dim=1)[0]
-
-                # Store predictions above threshold
-                for name, model_idx in self.target_indices.items():
-                    prob = probs[model_idx].item()
-                    if prob > self.prob_thresh:
-                        prediction_maps[name][i, j] = prob
-                        spectra_by_type[name].append(spectrum)
-
-        # Save prediction maps
+        predictions = np.concatenate(predictions, axis=0)
+        prediction_maps = {}
+        for name, model_idx in self.target_indices.items():
+            prob_map = predictions[:, model_idx].reshape(height, width)
+            prob_map = np.where(prob_map > self.prob_thresh, prob_map, 0)
+            prediction_maps[name] = prob_map
+            
+            mask = predictions[:, model_idx] > self.prob_thresh
+            if np.any(mask):
+                spectra_by_type[name] = [processed_spectra[:, i] for i, m in enumerate(mask) if m]
+        
         print("Saving prediction maps...")
-        for name, pred_map in prediction_maps.items():
-            tifffile.imwrite(os.path.join(output_dir, f"{name}_pred.tif"), (pred_map * 255).astype(np.uint8))
-
+        for name, pred_map in tqdm(prediction_maps.items(), desc="Saving Maps"):
+            tifffile.imwrite(
+                os.path.join(output_dir, f"{name}_pred.tif"), 
+                (pred_map * 255).astype(np.uint8)
+            )
+    
+        print("Plotting spectral comparisons...")
         self._plot_spectral_comparisons(spectra_by_type, output_dir)
+        print("Spectral comparisons saved!")
+
 
     def _plot_spectral_comparisons(self, spectra_by_type: Dict[str, List[np.ndarray]], output_dir: str):
         """Plot predicted spectra vs references"""
@@ -177,14 +171,16 @@ class HSIPredictor:
 
             # Plot reference spectrum
             ref_spectrum = self.ref[self.ref["name"] == subtype].iloc[0, 1:].values
-            ax.plot(self.wavenumbers, ref_spectrum, "k-", label=f"{self.ref["name"]}", linewidth=2)
+            ax.plot(self.wavenumbers, ref_spectrum, "k-", label=f"{self.ref['name']}", linewidth=2)
 
             if spectra_by_type[subtype]:
                 pred_spectra = np.array(spectra_by_type[subtype])
                 mean_spectrum = np.mean(pred_spectra, axis=0)
                 std_spectrum = np.std(pred_spectra, axis=0)
 
-                ax.plot(self.wavenumbers, mean_spectrum, "r-", label=f"predicted_{self.ref["name"]}", linewidth=2)
+                ax.plot(
+                    self.wavenumbers, mean_spectrum, "r-", label=f"predicted_{self.ref['name']}", linewidth=2
+                )
                 ax.fill_between(
                     self.wavenumbers,
                     mean_spectrum - std_spectrum,
@@ -205,19 +201,29 @@ class HSIPredictor:
 
 def main():
     parser = argparse.ArgumentParser(description="HSI Prediction")
-    parser.add_argument("--model_path", type=str, default="checkpoints/best_model.pth", help="Path to pretrained model")
-    parser.add_argument("--library_path", type=str, default="Raman_dataset/library.csv", help="Path to library CSV")
-    parser.add_argument("--image_path", type=str, default="HSI_data/1-Plin1_FB.tif", help="Path to HSI image stack")
-    parser.add_argument("--output_dir", type=str, default="predicted_results/hsi_predict", help="Directory to save results")
     parser.add_argument(
-        "--target", type=str, nargs="+", default=["d2-glucose", "d2-fructose", "d-tyrosine", "d-methionine", "d-leucine"], help="List of target subtypes to predict"
+        "--model_path", type=str, default="checkpoints/best_model.pth", help="Path to pretrained model"
+    )
+    parser.add_argument(
+        "--library_path", type=str, default="Raman_dataset/library.csv", help="Path to library CSV"
+    )
+    parser.add_argument(
+        "--image_path", type=str, default="HSI_data/1-Plin1_FB.tif", help="Path to HSI image stack"
+    )
+    parser.add_argument(
+        "--output_dir", type=str, default="predicted_results/hsi_predict", help="Directory to save results"
+    )
+    parser.add_argument(
+        "--target",
+        type=str,
+        nargs="+",
+        default=["d7-glucose", "d2-fructose", "d-tyrosine", "d-methionine", "d-leucine"],
+        help="List of target subtypes to predict",
     )
 
     args = parser.parse_args()
 
-    predictor = HSIPredictor(
-        model_path=args.model_path, library_path=args.library_path, target=args.target
-    )
+    predictor = HSIPredictor(model_path=args.model_path, library_path=args.library_path, target=args.target)
 
     predictor.predict_hsi(args.image_path, args.output_dir)
 
