@@ -126,7 +126,8 @@ class HSIPredictor:
         total_batches = (height * width + batch_size - 1) // batch_size
 
         for i in tqdm(range(0, height * width, batch_size), total=total_batches, desc="Batch Progress"):
-            batch = spectra[i, i + batch_size]
+            end_idx = min(i + batch_size, height * width)
+            batch = spectra[i:end_idx]
             batch = np.array([self.preprocess_spectrum(s) for s in batch])
             processed_batch = np.array([self.interpolate_spectrum(s, img_wavenumbers) for s in batch])
             processed_spectra[:, i : i + len(processed_batch)] = processed_batch.T
@@ -143,22 +144,18 @@ class HSIPredictor:
             prob_map = predictions[:, model_idx].reshape(height, width)
             prob_map = np.where(prob_map > self.prob_thresh, prob_map, 0)
             prediction_maps[name] = prob_map
-            
+
             mask = predictions[:, model_idx] > self.prob_thresh
             if np.any(mask):
                 spectra_by_type[name] = [processed_spectra[:, i] for i, m in enumerate(mask) if m]
-        
+
         print("Saving prediction maps...")
         for name, pred_map in tqdm(prediction_maps.items(), desc="Saving Maps"):
-            tifffile.imwrite(
-                os.path.join(output_dir, f"{name}_pred.tif"), 
-                (pred_map * 255).astype(np.uint8)
-            )
-    
+            tifffile.imwrite(os.path.join(output_dir, f"{name}_pred.tif"), (pred_map * 255).astype(np.uint8))
+
         print("Plotting spectral comparisons...")
         self._plot_spectral_comparisons(spectra_by_type, output_dir)
         print("Spectral comparisons saved!")
-
 
     def _plot_spectral_comparisons(self, spectra_by_type: Dict[str, List[np.ndarray]], output_dir: str):
         """Plot predicted spectra vs references"""
