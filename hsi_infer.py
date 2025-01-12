@@ -28,8 +28,14 @@ class HSIPredictor:
         """
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.target = target
-        self.prob_thresh = 0.5
-
+        self.prob_thresh = 0.85
+        self.colors = {
+            "d7-glucose": "#FF0000",  # Red
+            "d2-fructose": "#00FF00",  # Green
+            "d-tyrosine": "#0000FF",  # Blue
+            "d-methionine": "#FF00FF",  # Magenta
+            "d-leucine": "#FFD700",  # Gold
+        }
         # Load pretrained model
         self.model = self._load_model(model_path)
 
@@ -56,7 +62,7 @@ class HSIPredictor:
         name_to_idx = {name: idx for idx, name in enumerate(self.ref["name"].unique())}
         return {name: name_to_idx[name] for name in self.target}
 
-    def baseline_als(self, y: np.ndarray, lam=10**3, p=0.001, niter=10):
+    def baseline_als(self, y: np.ndarray, lam=10**4, p=0.005, niter=15):
         """Asymmetric Least Squares baseline correction"""
         L = len(y)
         D = sparse.diags([1, -2, 1], [0, -1, -2], shape=(L, L - 2))
@@ -81,12 +87,13 @@ class HSIPredictor:
             return spectrum / max_val
         return spectrum
 
-    def smooth_spectrum(self, spectrum: np.ndarray, lamda=0.2):
+    def smooth_spectrum(self, spectrum: np.ndarray, lamda=0.5):
         """Smooth spectrum using Whittaker smoother"""
         if np.all(spectrum == 0):
             return spectrum
 
         smoothed = rp.smooth(np.arange(len(spectrum)), spectrum, method="whittaker", Lambda=lamda)
+        smoothed = rp.smooth(np.arange(len(spectrum)), smoothed, method="whittaker", Lambda=lamda / 2)
         return smoothed
 
     def preprocess_spectrum(self, spectrum: np.ndarray):
@@ -112,9 +119,11 @@ class HSIPredictor:
     def predict_hsi(self, image_path: str, output_dir: str):
         os.makedirs(output_dir, exist_ok=True)
         image = tifffile.imread(image_path)
+        image = np.flip(image, axis=0)  # Flip image to match reference
+
         assert len(image.shape) == 3, "Input image must be an image stack"
         N, height, width = image.shape
-        batch_size = 1024
+        batch_size = 2048
         img_wavenumbers = np.linspace(self.wavenumbers[0], self.wavenumbers[-1], N)
 
         spectra = image.reshape(N, -1).T  # Reshape to (N, height * width)
@@ -134,28 +143,60 @@ class HSIPredictor:
             with torch.no_grad():
                 batch_tensor = torch.FloatTensor(processed_batch).to(self.device)
                 batch_tensor = batch_tensor.unsqueeze(1)
-                output = self.model(batch_tensor)
+                output = self.model(batch_tensor)  # (batch_size, num_classes)
+                target_mask = torch.zeros_like(output, dtype=torch.bool)
+                for _, idx in self.target_indices.items():
+                    target_mask[:, idx] = True
+                output = torch.where(target_mask, output, torch.tensor(-1e9).to(self.device))
                 probs = torch.softmax(output, dim=1)
                 predictions.append(probs.cpu().numpy())
 
         predictions = np.concatenate(predictions, axis=0)
         prediction_maps = {}
+
+        merged_maps = np.zeros((height, width, 3))
+
         for name, model_idx in self.target_indices.items():
             prob_map = predictions[:, model_idx].reshape(height, width)
             prob_map = np.where(prob_map > self.prob_thresh, prob_map, 0)
             prediction_maps[name] = prob_map
 
+            # Save colored map
+            color = (
+                np.array(tuple(int(self.colors[name].lstrip("#")[i : i + 2], 16) for i in (0, 2, 4))) / 255.0
+            )
+            colored_map = np.zeros((height, width, 3))
+            for i in range(3):
+                colored_map[:, :, i] = prob_map * color[i]
+
+            plt.figure(figsize=(10, 10))
+            plt.title(f"{name} Distribution")
+            plt.colorbar(label="Probability")
+            plt.axis("off")
+            plt.savefig(os.path.join(output_dir, f"{name}_colored.png"), dpi=300, bbox_inches="tight")
+            plt.close()
+
+            merged_map += colored_map
+
+            # Save grayscale TIFF
+            tifffile.imwrite(os.path.join(output_dir, f"{name}_pred.tif"), (prob_map * 255).astype(np.uint8))
+
             mask = predictions[:, model_idx] > self.prob_thresh
             if np.any(mask):
                 spectra_by_type[name] = [processed_spectra[:, i] for i, m in enumerate(mask) if m]
 
-        print("Saving prediction maps...")
-        for name, pred_map in tqdm(prediction_maps.items(), desc="Saving Maps"):
-            tifffile.imwrite(os.path.join(output_dir, f"{name}_pred.tif"), (pred_map * 255).astype(np.uint8))
+        # Save merged image
+        merged_map = np.clip(merged_map, 0, 1)
+        plt.figure(figsize=(10, 10))
+        plt.imshow(merged_map)
+        plt.title("Merged Distribution")
+        plt.axis("off")
+        plt.savefig(os.path.join(output_dir, "merged.png"), dpi=300, bbox_inches="tight")
+        plt.close()
 
-        print("Plotting spectral comparisons...")
+        # Plot spectral comparisons with matching colors
         self._plot_spectral_comparisons(spectra_by_type, output_dir)
-        print("Spectral comparisons saved!")
+        print("All visualizations saved!")
 
     def _plot_spectral_comparisons(self, spectra_by_type: Dict[str, List[np.ndarray]], output_dir: str):
         """Plot predicted spectra vs references"""
@@ -165,10 +206,9 @@ class HSIPredictor:
 
         for idx, subtype in enumerate(self.target):
             ax = axes[idx] if n_types > 1 else axes
-
-            # Plot reference spectrum
+            color = self.colors[subtype]
             ref_spectrum = self.ref[self.ref["name"] == subtype].iloc[0, 1:].values
-            ax.plot(self.wavenumbers, ref_spectrum, "k-", label=f"{self.ref['name']}", linewidth=2)
+            ax.plot(self.wavenumbers, ref_spectrum, "k-", label=f"{subtype}", linewidth=2)
 
             if spectra_by_type[subtype]:
                 pred_spectra = np.array(spectra_by_type[subtype])
@@ -176,7 +216,7 @@ class HSIPredictor:
                 std_spectrum = np.std(pred_spectra, axis=0)
 
                 ax.plot(
-                    self.wavenumbers, mean_spectrum, "r-", label=f"predicted_{self.ref['name']}", linewidth=2
+                    self.wavenumbers, mean_spectrum, color=color, label=f"predicted_{subtype}", linewidth=2
                 )
                 ax.fill_between(
                     self.wavenumbers,
@@ -205,10 +245,10 @@ def main():
         "--library_path", type=str, default="Raman_dataset/library.csv", help="Path to library CSV"
     )
     parser.add_argument(
-        "--image_path", type=str, default="HSI_data/1-Plin1_FB.tif", help="Path to HSI image stack"
+        "--image_path", type=str, default="HSI_data/1-Wt_FB.tif", help="Path to HSI image stack"
     )
     parser.add_argument(
-        "--output_dir", type=str, default="predicted_results/hsi_predict", help="Directory to save results"
+        "--output_dir", type=str, default="predicted_results/hsi_wt_predict", help="Directory to save results"
     )
     parser.add_argument(
         "--target",
