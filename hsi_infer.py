@@ -28,7 +28,7 @@ class HSIPredictor:
         """
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.target = target
-        self.prob_thresh = 0.85
+        self.prob_thresh = 0.9
         self.colors = {
             "d7-glucose": "#FF0000",  # Red
             "d2-fructose": "#00FF00",  # Green
@@ -62,7 +62,7 @@ class HSIPredictor:
         name_to_idx = {name: idx for idx, name in enumerate(self.ref["name"].unique())}
         return {name: name_to_idx[name] for name in self.target}
 
-    def baseline_als(self, y: np.ndarray, lam=10**4, p=0.005, niter=15):
+    def baseline_als(self, y: np.ndarray, lam=10**4, p=0.05, niter=15):
         """Asymmetric Least Squares baseline correction"""
         L = len(y)
         D = sparse.diags([1, -2, 1], [0, -1, -2], shape=(L, L - 2))
@@ -154,7 +154,7 @@ class HSIPredictor:
         predictions = np.concatenate(predictions, axis=0)
         prediction_maps = {}
 
-        merged_maps = np.zeros((height, width, 3))
+        merged_map = np.zeros((height, width, 3))
 
         for name, model_idx in self.target_indices.items():
             prob_map = predictions[:, model_idx].reshape(height, width)
@@ -170,8 +170,8 @@ class HSIPredictor:
                 colored_map[:, :, i] = prob_map * color[i]
 
             plt.figure(figsize=(10, 10))
-            plt.title(f"{name} Distribution")
-            plt.colorbar(label="Probability")
+            im = plt.imshow(colored_map)
+            plt.title(f"{name} Mapping")
             plt.axis("off")
             plt.savefig(os.path.join(output_dir, f"{name}_colored.png"), dpi=300, bbox_inches="tight")
             plt.close()
@@ -189,7 +189,7 @@ class HSIPredictor:
         merged_map = np.clip(merged_map, 0, 1)
         plt.figure(figsize=(10, 10))
         plt.imshow(merged_map)
-        plt.title("Merged Distribution")
+        plt.title("Merged Mapping")
         plt.axis("off")
         plt.savefig(os.path.join(output_dir, "merged.png"), dpi=300, bbox_inches="tight")
         plt.close()
@@ -245,10 +245,13 @@ def main():
         "--library_path", type=str, default="Raman_dataset/library.csv", help="Path to library CSV"
     )
     parser.add_argument(
-        "--image_path", type=str, default="HSI_data/1-Wt_FB.tif", help="Path to HSI image stack"
+        "--image_path", type=str, default="HSI_data/1-Plin1_FB.tif", help="Path to HSI image stack"
     )
     parser.add_argument(
-        "--output_dir", type=str, default="predicted_results/hsi_wt_predict", help="Directory to save results"
+        "--output_dir",
+        type=str,
+        default="predicted_results/hsi_plin1_predict",
+        help="Directory to save results",
     )
     parser.add_argument(
         "--target",
