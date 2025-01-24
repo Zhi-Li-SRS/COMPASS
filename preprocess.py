@@ -4,6 +4,19 @@ import numpy as np
 import pandas as pd
 from scipy.interpolate import interp1d
 
+def normalize(array, max=1, min=0):
+    """
+    Normalize array by minimum and maximum values
+    """
+    min_val = np.min(array)
+    max_val = np.max(array)
+
+    if np.all(array==0):
+        norm = array
+    else:
+        norm = ((array-min_val)/(max_val-min_val))*(max-min)+min
+    return norm
+
 
 def preprocess_data(input_file, output_file):
     """
@@ -17,15 +30,18 @@ def preprocess_data(input_file, output_file):
     return df_transposed
 
 
-def augment_data(spectrum, wavenumbers, n_augment=100, noise_level=0.1, max_shift=15):
+def augment_data(spectrum, wavenumbers, background, n_augment=100, noise_level=0.5, bg_level=1, max_shift=15):
     """
     Augment a single spectrum by adding noise and random shifts.
     Ensures all values are positive and within reasonable range for Raman spectra.
     """
     augmented_spectra = []
-    original_max = np.max(spectrum)  # Get original spectrum's max value
+    original_max = np.max(spectrum)  # Get original spectrum's max valu
 
     for _ in range(n_augment):
+        bg_scale = np.random.normal(bg_level * original_max, 0.5* noise_level * original_max)
+        background = bg_scale * background
+
         noise = np.random.normal(0, noise_level * original_max, len(spectrum))
         noisy_spectrum = spectrum + noise
         noisy_spectrum = np.maximum(noisy_spectrum, 0)
@@ -41,13 +57,13 @@ def augment_data(spectrum, wavenumbers, n_augment=100, noise_level=0.1, max_shif
         aug_spectrum = np.maximum(aug_spectrum, 0)
         aug_spectrum = aug_spectrum + 1e-6
         aug_spectrum = aug_spectrum / np.max(aug_spectrum)
-
+        aug_spectrum = aug_spectrum + background
         augmented_spectra.append(aug_spectrum)
 
     return np.array(augmented_spectra)
 
 
-def create_augmented_dataset(input_file, output_file, n_augment=100):
+def create_augmented_dataset(input_file, output_file, background_file, n_augment=100):
     """
     Create augmented dataset from original spectra.
     """
@@ -56,11 +72,18 @@ def create_augmented_dataset(input_file, output_file, n_augment=100):
     wavenumbers = df.columns[1:].astype(float).values
     spectra = df.iloc[:, 1:].values
 
+    background_df = pd.read_csv(background_file)
+    background = background_df.to_numpy()[:,0]
+    interp = interp1d(np.linspace(0,1, len(background)), background)
+    background = interp(np.linspace(0,1, spectra.shape[1]))
+    background = normalize(np.flip(background)) # Get normalized background array
+    
+
     augmented_data = []
 
     for idx, name in enumerate(names):
         spectrum = spectra[idx]
-        aug_spectra = augment_data(spectrum, wavenumbers, n_augment=n_augment)
+        aug_spectra = augment_data(spectrum, wavenumbers, background, n_augment=n_augment)
 
         spectra_df = pd.DataFrame(aug_spectra, columns=wavenumbers)
         spectra_df.insert(0, "name", name)
@@ -73,6 +96,6 @@ def create_augmented_dataset(input_file, output_file, n_augment=100):
 
 if __name__ == "__main__":
 
-    df_augmented = create_augmented_dataset("dataset/library.csv", "dataset/val_data.csv")
+    df_augmented = create_augmented_dataset("dataset/library.csv", "dataset/val_data.csv", "background/CD_HSI_76.csv")
 
     print("Data preprocessing and augmentation completed!")
