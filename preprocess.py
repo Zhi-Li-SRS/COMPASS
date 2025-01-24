@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 from scipy.interpolate import interp1d
 
+
 def normalize(array, max=1, min=0):
     """
     Normalize array by minimum and maximum values
@@ -11,10 +12,10 @@ def normalize(array, max=1, min=0):
     min_val = np.min(array)
     max_val = np.max(array)
 
-    if np.all(array==0):
+    if np.all(array == 0):
         norm = array
     else:
-        norm = ((array-min_val)/(max_val-min_val))*(max-min)+min
+        norm = ((array - min_val) / (max_val - min_val)) * (max - min) + min
     return norm
 
 
@@ -39,7 +40,7 @@ def augment_data(spectrum, wavenumbers, background, n_augment=100, noise_level=0
     original_max = np.max(spectrum)  # Get original spectrum's max valu
 
     for _ in range(n_augment):
-        bg_scale = np.random.normal(bg_level * original_max, 0.5* noise_level * original_max)
+        bg_scale = np.random.normal(bg_level * original_max, 0.5 * noise_level * original_max)
         background = bg_scale * background
 
         noise = np.random.normal(0, noise_level * original_max, len(spectrum))
@@ -73,11 +74,10 @@ def create_augmented_dataset(input_file, output_file, background_file, n_augment
     spectra = df.iloc[:, 1:].values
 
     background_df = pd.read_csv(background_file)
-    background = background_df.to_numpy()[:,0]
-    interp = interp1d(np.linspace(0,1, len(background)), background)
-    background = interp(np.linspace(0,1, spectra.shape[1]))
-    background = normalize(np.flip(background)) # Get normalized background array
-    
+    background = background_df.to_numpy()[:, 0]
+    interp = interp1d(np.linspace(0, 1, len(background)), background)
+    background = interp(np.linspace(0, 1, spectra.shape[1]))
+    background = normalize(np.flip(background))  # Get normalized background array
 
     augmented_data = []
 
@@ -96,6 +96,8 @@ def create_augmented_dataset(input_file, output_file, background_file, n_augment
 
 if __name__ == "__main__":
 
-    df_augmented = create_augmented_dataset("dataset/library.csv", "dataset/val_data.csv", "background/CD_HSI_76.csv")
+    df_augmented = create_augmented_dataset(
+        "Raman_dataset/library.csv", "Raman_dataset/val_data.csv", "background/CD_HSI_76.csv"
+    )
 
     print("Data preprocessing and augmentation completed!")

@@ -183,7 +183,7 @@ def plot_original_spectra(file_path):
     for i, row in df.iterrows():
         spectrum = row.values[1:]  # Skip the Name column
         offset = i * 0.7
-        plt.plot(wavenumbers, spectrum + offset, label=row["Name"], color=colors[i])
+        plt.plot(wavenumbers, spectrum + offset, label=row["name"], color=colors[i])
 
     plt.xlabel("Wavenumber (cm$^{-1}$)")
     plt.ylabel("Normalized Intensity (a.u.)")
@@ -203,7 +203,7 @@ def plot_augmented_spectra(file_path, n_samples=20):
     """
     df = pd.read_csv(file_path)
 
-    first_lipid = df.iloc[0]["name"]  # get the fisrt lipid name
+    first_lipid = df.iloc[1]["name"]  # get the fisrt lipid name
     wavenumbers = df.columns[1:].astype(float).values  # Skip the name column
 
     lipid_data = df[df["name"] == first_lipid]
@@ -218,7 +218,7 @@ def plot_augmented_spectra(file_path, n_samples=20):
 
     for i, idx in enumerate(random_indices):
         spectrum = selected_data.iloc[i, 1:].values  # Skip the name column
-        offset = i * 0.5
+        offset = i * 1
         plt.plot(wavenumbers, spectrum + offset, color=base_color, label=f"Sample{i + 1}", alpha=0.7)
 
     plt.xlabel("Wavenumber (cm$^{-1}$)")
@@ -232,7 +232,7 @@ def plot_augmented_spectra(file_path, n_samples=20):
 
 if __name__ == "__main__":
     os.makedirs("figures", exist_ok=True)
-    orig_file_path = "dataset/library.csv"
-    aug_file_path = "dataset/data_aug.csv"
+    orig_file_path = "Raman_dataset/library.csv"
+    aug_file_path = "Raman_dataset/train_data.csv"
     plot_original_spectra(orig_file_path)
     plot_augmented_spectra(aug_file_path)
