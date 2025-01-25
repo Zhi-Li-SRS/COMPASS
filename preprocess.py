@@ -31,7 +31,9 @@ def preprocess_data(input_file, output_file):
     return df_transposed
 
 
-def augment_data(spectrum, wavenumbers, background, n_augment=100, noise_level=0.5, bg_level=1, max_shift=15):
+def augment_data(
+    spectrum, wavenumbers, background, n_augment=100, noise_level=0.5, bg_level=1.75, bg_scale=1, max_shift=15
+):
     """
     Augment a single spectrum by adding noise and random shifts.
     Ensures all values are positive and within reasonable range for Raman spectra.
@@ -40,8 +42,8 @@ def augment_data(spectrum, wavenumbers, background, n_augment=100, noise_level=0
     original_max = np.max(spectrum)  # Get original spectrum's max valu
 
     for _ in range(n_augment):
-        bg_scale = np.random.normal(bg_level * original_max, 0.5 * noise_level * original_max)
-        background = bg_scale * background
+        bg_mult = np.random.normal(bg_level * original_max, bg_scale * noise_level * original_max)
+        curr_background = bg_mult * background
 
         noise = np.random.normal(0, noise_level * original_max, len(spectrum))
         noisy_spectrum = spectrum + noise
@@ -54,7 +56,7 @@ def augment_data(spectrum, wavenumbers, background, n_augment=100, noise_level=0
             shifted_wavenumbers, noisy_spectrum, kind="cubic", bounds_error=False, fill_value=0
         )
         aug_spectrum = interp_func(wavenumbers)
-        aug_spectrum = aug_spectrum + background
+        aug_spectrum = aug_spectrum + curr_background
         aug_spectrum = aug_spectrum / np.max(aug_spectrum)
         aug_spectrum = np.maximum(aug_spectrum, 0)
         augmented_spectra.append(aug_spectrum)
