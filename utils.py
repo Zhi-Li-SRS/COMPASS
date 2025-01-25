@@ -8,6 +8,8 @@ import torch
 from scipy.interpolate import interp1d
 from sklearn.manifold import TSNE
 
+from dataload import load_data
+
 
 def convert_to_csv(xlsx_path, csv_path):
     df = pd.read_excel(xlsx_path)
@@ -151,8 +153,8 @@ class GradCAM:
 
 
 if __name__ == "__main__":
-    file_path = "dataset/data_aug.csv"
+    file_path = "Raman_dataset/train_data.csv"
     df = pd.read_csv(file_path)
     labels = df["name"].values
     features = df.drop("name", axis=1).values
-    plot_tsne(features, labels=labels, save_path="figures/tsne_orig.png")
+    plot_tsne(features, labels=labels, save_path="figures/tsne_aug.png")

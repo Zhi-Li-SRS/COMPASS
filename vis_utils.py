@@ -182,7 +182,7 @@ def plot_original_spectra(file_path):
 
     for i, row in df.iterrows():
         spectrum = row.values[1:]  # Skip the Name column
-        offset = i * 0.7
+        offset = i * 0.5
         plt.plot(wavenumbers, spectrum + offset, label=row["name"], color=colors[i])
 
     plt.xlabel("Wavenumber (cm$^{-1}$)")
@@ -203,7 +203,7 @@ def plot_augmented_spectra(file_path, n_samples=20):
     """
     df = pd.read_csv(file_path)
 
-    first_lipid = df.iloc[1]["name"]  # get the fisrt lipid name
+    first_lipid = df.iloc[0]["name"]  # get the fisrt lipid name
     wavenumbers = df.columns[1:].astype(float).values  # Skip the name column
 
     lipid_data = df[df["name"] == first_lipid]
@@ -218,7 +218,7 @@ def plot_augmented_spectra(file_path, n_samples=20):
 
     for i, idx in enumerate(random_indices):
         spectrum = selected_data.iloc[i, 1:].values  # Skip the name column
-        offset = i * 1
+        offset = i * 0.3
         plt.plot(wavenumbers, spectrum + offset, color=base_color, label=f"Sample{i + 1}", alpha=0.7)
 
     plt.xlabel("Wavenumber (cm$^{-1}$)")

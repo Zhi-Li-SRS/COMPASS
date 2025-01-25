@@ -32,7 +32,7 @@ def preprocess_data(input_file, output_file):
 
 
 def augment_data(
-    spectrum, wavenumbers, background, n_augment=100, noise_level=0.5, bg_level=1.75, bg_scale=1, max_shift=15
+    spectrum, wavenumbers, background, n_augment=400, noise_level=0.3, bg_level=1.1, bg_scale=1, max_shift=15
 ):
     """
     Augment a single spectrum by adding noise and random shifts.
@@ -42,7 +42,7 @@ def augment_data(
     original_max = np.max(spectrum)  # Get original spectrum's max valu
 
     for _ in range(n_augment):
-        bg_mult = np.random.normal(bg_level * original_max, bg_scale * noise_level * original_max)
+        bg_mult = np.random.uniform(bg_scale * noise_level * original_max, bg_level * original_max)
         curr_background = bg_mult * background
 
         noise = np.random.normal(0, noise_level * original_max, len(spectrum))
@@ -53,7 +53,11 @@ def augment_data(
         shifted_wavenumbers = wavenumbers + shift
 
         interp_func = interp1d(
-            shifted_wavenumbers, noisy_spectrum, kind="cubic", bounds_error=False, fill_value=0
+            shifted_wavenumbers,
+            noisy_spectrum,
+            kind="cubic",
+            bounds_error=False,
+            fill_value=(spectrum[0], spectrum[-1]),
         )
         aug_spectrum = interp_func(wavenumbers)
         aug_spectrum = aug_spectrum + curr_background
@@ -64,7 +68,7 @@ def augment_data(
     return np.array(augmented_spectra)
 
 
-def create_augmented_dataset(input_file, output_file, background_file, n_augment=100):
+def create_augmented_dataset(input_file, output_file, background_file, n_augment=400):
     """
     Create augmented dataset from original spectra.
     """
