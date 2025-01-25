@@ -54,11 +54,9 @@ def augment_data(spectrum, wavenumbers, background, n_augment=100, noise_level=0
             shifted_wavenumbers, noisy_spectrum, kind="cubic", bounds_error=False, fill_value=0
         )
         aug_spectrum = interp_func(wavenumbers)
-
-        aug_spectrum = np.maximum(aug_spectrum, 0)
-        aug_spectrum = aug_spectrum + 1e-6
-        aug_spectrum = aug_spectrum / np.max(aug_spectrum)
         aug_spectrum = aug_spectrum + background
+        aug_spectrum = aug_spectrum / np.max(aug_spectrum)
+        aug_spectrum = np.maximum(aug_spectrum, 0)
         augmented_spectra.append(aug_spectrum)
 
     return np.array(augmented_spectra)
@@ -91,7 +89,6 @@ def create_augmented_dataset(input_file, output_file, background_file, n_augment
 
     df_augmented = pd.concat(augmented_data, ignore_index=True)
     df_augmented.to_csv(output_file, index=False)
-    return df_augmented
 
 
 if __name__ == "__main__":
