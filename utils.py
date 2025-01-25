@@ -90,10 +90,10 @@ class GradCAM:
         self.register_hooks()
 
     def register_hooks(self):
-        def forward_hook(output):
+        def forward_hook(module, input, output):
             self.features = output
 
-        def backward_hook(grad_output):
+        def backward_hook(module, grad_input, grad_output):
             self.gradients = grad_output[0]
 
         self.hooks.append(self.target_layer.register_forward_hook(forward_hook))

@@ -10,7 +10,7 @@ def correlation_loss(x, y):
     """Calculate correlation loss between two tensors"""
     if x.dim() == 2:
         x = x.unsqueeze(1)
-    
+
     if y.dim() == 2:
         y = y.unsqueeze(1)
     x_mean = torch.mean(x, dim=1, keepdim=True)
@@ -18,9 +18,9 @@ def correlation_loss(x, y):
     eps = 1e-8
     x_std = torch.std(x, dim=1, keepdim=True, unbiased=False) + eps
     y_std = torch.std(y, dim=1, keepdim=True, unbiased=False) + eps
-    
+
     correlation = torch.mean((x - x_mean) * (y - y_mean) / (x_std * y_std))
-    
+
     return 1 - correlation
 
 
@@ -33,17 +33,17 @@ class Loss(nn.Module):
         corr_weight (float): Weight for correlation loss.
     """
 
-    def __init__(self, use_corr=True, corr_weight=0.2):
+    def __init__(self):
         super().__init__()
         self.ce_loss = nn.CrossEntropyLoss()
-        self.use_corr = use_corr
-        self.corr_weight = corr_weight
+        # self.use_corr = use_corr
+        # self.corr_weight = corr_weight
 
     def forward(self, pred, target, features=None, true_spectra=None):
         loss = self.ce_loss(pred, target)
-        if self.use_corr and features is not None and true_spectra is not None:
-            corr_loss = correlation_loss(features, true_spectra)
-            loss += self.corr_weight * corr_loss
+        # if self.use_corr and features is not None and true_spectra is not None:
+        #     corr_loss = correlation_loss(features, true_spectra)
+        #     loss += self.corr_weight * corr_loss
         return loss
 
 

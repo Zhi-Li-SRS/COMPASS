@@ -7,6 +7,7 @@ import pandas as pd
 import seaborn as sns
 from scipy.ndimage import gaussian_filter1d
 from sklearn.metrics import auc, confusion_matrix, roc_curve
+from sklearn.preprocessing import label_binarize
 
 
 class Visualization:
@@ -101,6 +102,9 @@ class Visualization:
 
         colors = plt.cm.tab20(np.linspace(0, 1, n_classes))
         for i, color in zip(range(n_classes), colors):
+            if len(np.unique(tpr[i])) < 2 or len(np.unique(fpr[i])) < 2:
+                print(f"Class {i} has too few samples to calculate AUC.")
+                continue
             plt.plot(
                 fpr[i], tpr[i], color=color, lw=2, label=f"Class {i} (AUC = {roc_auc[i]:.2f})", alpha=0.7
             )
@@ -155,13 +159,13 @@ def plot_train_history(
     vis = Visualization(save_dir)
     vis.plot_train_curves(train_losses, val_losses, val_accuracies, sigma=2)
     vis.plot_confusion_matrix(y_true, y_pred, class_names)
-
+    y_true_bin = label_binarize(y_true, classes=np.arange(len(class_names)))
     fpr = {}
     tpr = {}
     roc_auc = {}
     n_classes = len(class_names)
     for i in range(n_classes):
-        fpr[i], tpr[i], _ = roc_curve(y_true == i, y_pred_proba[:, i])
+        fpr[i], tpr[i], _ = roc_curve(y_true_bin[:, i], y_pred_proba[:, i])
         roc_auc[i] = auc(fpr[i], tpr[i])
 
     vis.plot_roc_curves(fpr, tpr, roc_auc, n_classes)

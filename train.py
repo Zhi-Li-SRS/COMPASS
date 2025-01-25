@@ -26,7 +26,7 @@ class Trainer:
         self.metrics = Metrics()
 
         self.model = self._prepare_model()
-        self.criterion = Loss(use_corr=args.use_corr, corr_weight=args.corr_weight)
+        self.criterion = Loss()
         self.optimizer = optim.Adam(self.model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
         self.scheduler = CosineAnnealingLR(self.optimizer, T_max=args.epochs, eta_min=1e-6)
         # Updated data loading
@@ -131,10 +131,10 @@ class Trainer:
             self.optimizer.zero_grad()
             output = self.model(data)
 
-            if self.args.use_corr:
-                loss = self.criterion(output, target, data, data)
-            else:
-                loss = self.criterion(output, target)
+            # if self.args.use_corr:
+            #     loss = self.criterion(output, target, data, data)
+            # else:
+            loss = self.criterion(output, target)
 
             loss.backward()
             self.optimizer.step()
@@ -159,10 +159,10 @@ class Trainer:
                     data = data.unsqueeze(1)
 
                 output = self.model(data)
-                if self.args.use_corr:
-                    loss = self.criterion(output, target, data, data)
-                else:
-                    loss = self.criterion(output, target)
+                # if self.args.use_corr:
+                #     loss = self.criterion(output, target, data, data)
+                # else:
+                loss = self.criterion(output, target)
                 val_loss += loss.item()
 
                 pred = output.argmax(dim=1, keepdim=True)
@@ -275,15 +275,15 @@ def main():
     parser.add_argument("--num_classes", type=int, default=18, help="Number of classes in the dataset")
 
     # Training parameters
-    parser.add_argument("--batch_size", type=int, default=128, help="Training batch size")
+    parser.add_argument("--batch_size", type=int, default=256, help="Training batch size")
     parser.add_argument("--epochs", type=int, default=200, help="Number of epochs to train")
     parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
     parser.add_argument("--weight_decay", type=float, default=1e-5, help="Weight decay for optimizer")
     parser.add_argument("--train_ratio", type=float, default=0.8, help="Ratio of training data to total data")
-    parser.add_argument(
-        "--use_corr", type=bool, default=True, help="Use correlation loss in addition to CrossEntropy"
-    )
-    parser.add_argument("--corr_weight", type=float, default=0.2, help="Weight for correlation loss term")
+    # parser.add_argument(
+    #     "--use_corr", type=bool, default=True, help="Use correlation loss in addition to CrossEntropy"
+    # )
+    # parser.add_argument("--corr_weight", type=float, default=0.2, help="Weight for correlation loss term")
     parser.add_argument(
         "--resume_checkpoint", type=str, default=None, help="Path to checkpoint to resume training from"
     )
@@ -301,10 +301,10 @@ def main():
 
     # Data parameters
     parser.add_argument(
-        "--train_data_path", type=str, default="dataset/train_data.csv", help="Path to the dataset"
+        "--train_data_path", type=str, default="Raman_dataset/train_data.csv", help="Path to the dataset"
     )
     parser.add_argument(
-        "--val_data_path", type=str, default="dataset/val_data.csv", help="Path to the dataset"
+        "--val_data_path", type=str, default="Raman_dataset/val_data.csv", help="Path to the dataset"
     )
     parser.add_argument(
         "--checkpoint_dir", type=str, default="checkpoints", help="Directory to save checkpoints"

@@ -158,7 +158,7 @@ class Infer:
             axs[i].plot(self.wavenumbers, spectrum, color="gray", linewidth=1, alpha=0.7)
 
             # Overlay Grad-CAM heatmap
-            cmap = plt.cm.jet
+            cmap = plt.cm.Reds
             for j in range(len(spectrum) - 1):
                 axs[i].fill_between(
                     [self.wavenumbers[j], self.wavenumbers[j + 1]],
@@ -235,10 +235,13 @@ def main():
         "--model_path", type=str, default="checkpoints/best_model.pth", help="Path to saved model"
     )
     parser.add_argument(
-        "--data_path", type=str, default="dataset/train_data.csv", help="Path to original spectra data"
+        "--data_path", type=str, default="Raman_dataset/library.csv", help="Path to original spectra data"
     )
     parser.add_argument(
-        "--output_dir", type=str, default="predicted_results", help="Directory to save results"
+        "--output_dir",
+        type=str,
+        default="predicted_results/learning_performance",
+        help="Directory to save results",
     )
     parser.add_argument("--num_classes", type=int, default=18, help="Number of classes")
     parser.add_argument("--batch_size", type=int, default=128, help="Batch size for feature extraction")
@@ -248,8 +251,8 @@ def main():
 
     inference = Infer(args)
     features = inference.extract_features()
-    inference.plot_tsne_comparison(features)
-    # inference.plot_gradcam()
+    # inference.plot_tsne_comparison(features)
+    inference.plot_gradcam()
 
 
 if __name__ == "__main__":

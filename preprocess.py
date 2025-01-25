@@ -32,7 +32,7 @@ def preprocess_data(input_file, output_file):
 
 
 def augment_data(
-    spectrum, wavenumbers, background, n_augment=400, noise_level=0.3, bg_level=1.1, bg_scale=1, max_shift=15
+    spectrum, wavenumbers, background, n_augment=400, noise_level=0.2, bg_level=1.1, bg_scale=1, max_shift=15
 ):
     """
     Augment a single spectrum by adding noise and random shifts.
@@ -100,7 +100,7 @@ def create_augmented_dataset(input_file, output_file, background_file, n_augment
 if __name__ == "__main__":
 
     df_augmented = create_augmented_dataset(
-        "Raman_dataset/library.csv", "Raman_dataset/val_data.csv", "background/CD_HSI_76.csv"
+        "Raman_dataset/library.csv", "Raman_dataset/train_data.csv", "background/CD_HSI_76.csv"
     )
 
     print("Data preprocessing and augmentation completed!")

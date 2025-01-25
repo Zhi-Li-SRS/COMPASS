@@ -77,7 +77,7 @@ class LipidNet(nn.Module):
         super().__init__()
         self.in_channels = base_channels
 
-        self.conv1 = Conv1d(input_channels, base_channels, kernel_size=9, stride=1, padding=4)
+        self.conv1 = Conv1d(input_channels, base_channels, kernel_size=7, stride=1, padding=3)
 
         self.layer1 = self._make_layer(ResBlock1D, out_channels=base_channels, blocks=2)
         self.layer2 = self._make_layer(ResBlock1D, out_channels=base_channels * 2, blocks=2, stride=2)
