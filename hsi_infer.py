@@ -10,6 +10,7 @@ import tifffile
 import torch
 from scipy import sparse
 from scipy.interpolate import interp1d
+from scipy.ndimage import minimum_filter
 from scipy.sparse.linalg import spsolve
 from tqdm import tqdm
 
@@ -65,18 +66,42 @@ class HSIPredictor:
         name_to_idx = {name: idx for idx, name in enumerate(self.ref["name"].unique())}
         return {name: name_to_idx[name] for name in self.target}
 
-    def baseline_als(self, y: np.ndarray, lam=10**4, p=0.05, niter=15):
-        """Asymmetric Least Squares baseline correction"""
+    def airpls_baseline(self, y: np.ndarray, lam: float = 1e3, niter: int = 15, tol: float = 1e-3):
+        """
+        Adaptive Iteratively Reweighted Penalized Least Squares (airPLS) baseline correction
+        Reference: Zhang ZM, Chen S, Liang YZ. Baseline correction using adaptive iteratively reweighted penalized least squares. Analyst. 2010.
+
+        Parameters:
+            y: Input spectrum
+            lam: Smoothness parameter (larger = smoother)
+            niter: Maximum iterations
+            tol: Convergence tolerance
+
+        Returns:
+            corrected: Baseline corrected spectrum
+            baseline: Estimated baseline
+        """
+        y = y.copy()
         L = len(y)
         D = sparse.diags([1, -2, 1], [0, -1, -2], shape=(L, L - 2))
         w = np.ones(L)
-        y = np.asarray(y)
 
-        for i in range(niter):
+        for _ in range(niter):
             W = sparse.spdiags(w, 0, L, L)
             Z = W + lam * D.dot(D.transpose())
             z = spsolve(Z, w * y)
-            w = p * (y > z) + (1 - p) * (y < z)
+            d = y - z
+            dn = d[d < 0]
+            if len(dn) == 0:
+                break
+
+            max_residual = np.max(np.abs(dn))
+            if max_residual < tol:
+                break
+
+            w_new = np.exp(2 * (d / dn.mean()))
+            w = np.where(d < 0, w_new, 0)
+            w = np.clip(w, 1e-6, 1e6)
 
         return y - z
 
@@ -90,7 +115,7 @@ class HSIPredictor:
             return spectrum / max_val
         return spectrum
 
-    def smooth_spectrum(self, spectrum: np.ndarray, lamda=0.5):
+    def smooth_spectrum(self, spectrum: np.ndarray, lamda=20):
         """Smooth spectrum using Whittaker smoother"""
         if np.all(spectrum == 0):
             return spectrum
@@ -116,13 +141,7 @@ class HSIPredictor:
         if np.all(spectrum == 0):
             return np.zeros(len(self.wavenumbers))
 
-        f = interp1d(
-            orig_wavenumbers,
-            spectrum,
-            kind="cubic",
-            bounds_error=False,
-            fill_value=(spectrum[0], spectrum[-1]),
-        )
+        f = interp1d(orig_wavenumbers, spectrum, kind="cubic", bounds_error=False, fill_value=0)
         return f(self.wavenumbers)
 
     def predict_hsi(self, image_path: str, output_dir: str):
@@ -140,7 +159,7 @@ class HSIPredictor:
         background_mask = background_mask.reshape(height, width)
 
         spectra = self.original_spectra.copy()
-        processed_spectra = np.zeros((len(self.wavenumbers), height * width))
+        self.processed_spectra = np.zeros((len(self.wavenumbers), height * width))
         predictions = []
         spectra_by_type = {name: [] for name in self.target}
 
@@ -152,7 +171,7 @@ class HSIPredictor:
             batch = spectra[i:end_idx]
             batch = np.array([self.preprocess_spectrum(s) for s in batch])
             processed_batch = np.array([self.interpolate_spectrum(s, self.img_wavenumbers) for s in batch])
-            processed_spectra[:, i : i + len(processed_batch)] = processed_batch.T
+            self.processed_spectra[:, i : i + len(processed_batch)] = processed_batch.T
             with torch.no_grad():
                 batch_tensor = torch.FloatTensor(processed_batch).to(self.device)
                 batch_tensor = batch_tensor.unsqueeze(1)
@@ -164,9 +183,9 @@ class HSIPredictor:
                 probs = torch.softmax(output, dim=1)
                 predictions.append(probs.cpu().numpy())
 
-        predictions = np.concatenate(predictions, axis=0)
+        self.predictions = np.concatenate(predictions, axis=0)
         for name, model_idx in self.target_indices.items():
-            pred_probs = predictions[:, model_idx]
+            pred_probs = self.predictions[:, model_idx]
             print(f"{name}:")
             print(f"  Max prob: {np.max(pred_probs):.4f}")
             print(f"  Mean prob: {np.mean(pred_probs):.4f}")
@@ -177,7 +196,7 @@ class HSIPredictor:
         merged_map = np.zeros((height, width, 3))
 
         for name, model_idx in self.target_indices.items():
-            prob_map = predictions[:, model_idx].reshape(height, width)
+            prob_map = self.predictions[:, model_idx].reshape(height, width)
             prob_map = np.where(prob_map > self.prob_thresh, prob_map, 0)
             prob_map[background_mask] = 0
             prediction_maps[name] = prob_map
@@ -202,7 +221,7 @@ class HSIPredictor:
             # Save grayscale TIFF
             tifffile.imwrite(os.path.join(output_dir, f"{name}_pred.tif"), (prob_map * 255).astype(np.uint8))
 
-            prob_values = predictions[:, model_idx].copy()
+            prob_values = self.predictions[:, model_idx].copy()
             prob_values[background_mask.flatten()] = 0
             mask = prob_values > self.prob_thresh
             if np.any(mask):
@@ -236,24 +255,36 @@ class HSIPredictor:
             ax.plot(self.wavenumbers, ref_spectrum, "k-", label=f"{subtype}", linewidth=2)
 
             if spectra_by_type[subtype]:
-                pred_spectra = []
-                for pixel_idx in spectra_by_type[subtype]:
-                    raw_spectrum = self.original_spectra[pixel_idx]
-                    # processed = self.baseline_als(raw_spectrum)
-                    # processed = self.normalize_spectrum(processed)
-                    # processed = self.smooth_spectrum(processed)
-                    interpolated = self.interpolate_spectrum(raw_spectrum, self.img_wavenumbers)
-                    pred_spectra.append(interpolated)
+                model_idx = self.target_indices[subtype]
+                pixel_indices = spectra_by_type[subtype]
 
-                pred_spectra = np.array(pred_spectra)
-                mean_spectrum = np.mean(pred_spectra, axis=0)
-                processed = self.baseline_als(mean_spectrum)
-                processed = self.normalize_spectrum(processed)
-                mean_spectrum = self.smooth_spectrum(processed)
+                # Get the highest probability pixel
+                probs = self.predictions[pixel_indices, model_idx]
+                max_idx = pixel_indices[np.argmax(probs)]
+                best_spectrum = self.processed_spectra[:, max_idx]
+                best_spectrum_raw = self.normalize_spectrum(best_spectrum)
+                best_spectrum = self.airpls_baseline(best_spectrum)
+                best_spectrum = self.normalize_spectrum(best_spectrum)
+                best_spectrum = self.smooth_spectrum(best_spectrum)
 
-                std_spectrum = np.std(pred_spectra, axis=0)
+                # pred_spectra = []
+                # for pixel_idx in spectra_by_type[subtype]:
+                #     raw_spectrum = self.original_spectra[pixel_idx]
+                #     # processed = self.baseline_als(raw_spectrum)
+                #     # processed = self.normalize_spectrum(processed)
+                #     # processed = self.smooth_spectrum(processed)
+                #     interpolated = self.interpolate_spectrum(raw_spectrum, self.img_wavenumbers)
+                #     pred_spectra.append(interpolated)
 
-                ax.plot(self.wavenumbers, mean_spectrum, color=color, label=f"predicted", linewidth=2)
+                # pred_spectra = np.array(pred_spectra)
+                # mean_spectrum = np.mean(pred_spectra, axis=0)
+                # processed = self.modpoly_baseline(mean_spectrum)
+                # processed = self.normalize_spectrum(processed)
+                # mean_spectrum = self.smooth_spectrum(processed)
+
+                # std_spectrum = np.std(pred_spectra, axis=0)
+
+                ax.plot(self.wavenumbers, best_spectrum, color=color, label=f"predicted", linewidth=2)
                 # ax.fill_between(
                 #     self.wavenumbers,
                 #     mean_spectrum - std_spectrum,
@@ -283,14 +314,11 @@ def main():
     parser.add_argument(
         "--image_path",
         type=str,
-        default="HSI_data/Result of 0116Plin1-2-sweep-830-860-100.tif",
+        default="HSI_data/Result of 0116WT-1-sweep-830-860-100.tif",
         help="Path to HSI image stack",
     )
     parser.add_argument(
-        "--output_dir",
-        type=str,
-        default="predicted_results/hsi_plin1_predict",
-        help="Directory to save results",
+        "--output_dir", type=str, default="predicted_results/hsi_wt_predict", help="Directory to save results"
     )
     parser.add_argument(
         "--target",

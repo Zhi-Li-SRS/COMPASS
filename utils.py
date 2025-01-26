@@ -4,11 +4,56 @@ from typing import List, Optional, Union
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import rampy as rp
 import torch
+from scipy import sparse
 from scipy.interpolate import interp1d
+from scipy.sparse.linalg import spsolve
 from sklearn.manifold import TSNE
 
 from dataload import load_data
+
+
+def airpls_baseline(y: np.ndarray, lam: float = 1e3, niter: int = 15, tol: float = 1e-3):
+    """Adaptive Iteratively Reweighted Penalized Least Squares (airPLS) baseline correction"""
+    y = y.copy()
+    L = len(y)
+    D = sparse.diags([1, -2, 1], [0, -1, -2], shape=(L, L - 2))
+    w = np.ones(L)
+
+    for _ in range(niter):
+        W = sparse.spdiags(w, 0, L, L)
+        Z = W + lam * D.dot(D.transpose())
+        z = spsolve(Z, w * y)
+        d = y - z
+        dn = d[d < 0]
+        if len(dn) == 0:
+            break
+
+        max_residual = np.max(np.abs(dn))
+        if max_residual < tol:
+            break
+
+        w_new = np.exp(2 * (d / dn.mean()))
+        w = np.where(d < 0, w_new, 0)
+        w = np.clip(w, 1e-6, 1e6)
+
+    return y - z
+
+
+def normalize_spectrum(spectrum: np.ndarray):
+    """Normalize spectrum to max intensity"""
+    if np.all(spectrum == 0):
+        return spectrum
+    return spectrum / np.max(spectrum) if np.max(spectrum) != 0 else spectrum
+
+
+def smooth_spectrum(spectrum: np.ndarray, lamda=20):
+    """Smooth spectrum using Whittaker smoother"""
+    if np.all(spectrum == 0):
+        return spectrum
+    smoothed = rp.smooth(np.arange(len(spectrum)), spectrum, method="whittaker", Lambda=lamda)
+    return rp.smooth(np.arange(len(spectrum)), smoothed, method="whittaker", Lambda=lamda / 2)
 
 
 def convert_to_csv(xlsx_path, csv_path):
