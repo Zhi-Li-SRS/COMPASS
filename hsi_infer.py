@@ -15,6 +15,7 @@ from scipy.sparse.linalg import spsolve
 from tqdm import tqdm
 
 from model import LipidNet
+from utils import airpls_baseline, normalize_spectrum, smooth_spectrum
 
 
 class HSIPredictor:
@@ -44,7 +45,9 @@ class HSIPredictor:
         self.ref = self._load_references(library_path)
 
         self.wavenumbers = self.ref.columns[1:].astype(float).values
-        self.target_indices = self._get_target_indices()
+        self.target_indices = (
+            self._get_target_indices()
+        )  # {'d2-fructose': 0, 'd-tyrosine': 1, 'd-methionine': 2, 'd-leucine': 3}
 
         self.original_spectra = None
         self.img_wavenumbers = None
@@ -66,64 +69,6 @@ class HSIPredictor:
         name_to_idx = {name: idx for idx, name in enumerate(self.ref["name"].unique())}
         return {name: name_to_idx[name] for name in self.target}
 
-    def airpls_baseline(self, y: np.ndarray, lam: float = 1e3, niter: int = 15, tol: float = 1e-3):
-        """
-        Adaptive Iteratively Reweighted Penalized Least Squares (airPLS) baseline correction
-        Reference: Zhang ZM, Chen S, Liang YZ. Baseline correction using adaptive iteratively reweighted penalized least squares. Analyst. 2010.
-
-        Parameters:
-            y: Input spectrum
-            lam: Smoothness parameter (larger = smoother)
-            niter: Maximum iterations
-            tol: Convergence tolerance
-
-        Returns:
-            corrected: Baseline corrected spectrum
-            baseline: Estimated baseline
-        """
-        y = y.copy()
-        L = len(y)
-        D = sparse.diags([1, -2, 1], [0, -1, -2], shape=(L, L - 2))
-        w = np.ones(L)
-
-        for _ in range(niter):
-            W = sparse.spdiags(w, 0, L, L)
-            Z = W + lam * D.dot(D.transpose())
-            z = spsolve(Z, w * y)
-            d = y - z
-            dn = d[d < 0]
-            if len(dn) == 0:
-                break
-
-            max_residual = np.max(np.abs(dn))
-            if max_residual < tol:
-                break
-
-            w_new = np.exp(2 * (d / dn.mean()))
-            w = np.where(d < 0, w_new, 0)
-            w = np.clip(w, 1e-6, 1e6)
-
-        return y - z
-
-    def normalize_spectrum(self, spectrum: np.ndarray):
-        """Normalize spectrum to max intensity"""
-        if np.all(spectrum == 0):
-            return spectrum
-
-        max_val = np.max(np.abs(spectrum))
-        if max_val != 0:
-            return spectrum / max_val
-        return spectrum
-
-    def smooth_spectrum(self, spectrum: np.ndarray, lamda=20):
-        """Smooth spectrum using Whittaker smoother"""
-        if np.all(spectrum == 0):
-            return spectrum
-
-        smoothed = rp.smooth(np.arange(len(spectrum)), spectrum, method="whittaker", Lambda=lamda)
-        smoothed = rp.smooth(np.arange(len(spectrum)), smoothed, method="whittaker", Lambda=lamda / 2)
-        return smoothed
-
     def preprocess_spectrum(self, spectrum: np.ndarray):
         """Preprocess a single spectrum"""
         if np.all(spectrum == 0):
@@ -131,7 +76,7 @@ class HSIPredictor:
 
         # spectrum = self.baseline_als(spectrum)
         # spectrum = np.maximum(spectrum, 0)
-        spectrum = self.normalize_spectrum(spectrum)
+        spectrum = normalize_spectrum(spectrum)
         # spectrum = self.smooth_spectrum(spectrum)
 
         return spectrum
@@ -247,7 +192,7 @@ class HSIPredictor:
         n_types = len(self.target)
         fig, axes = plt.subplots(1, n_types, figsize=(5 * n_types, 5))
         plt.style.use("seaborn-v0_8-pastel")
-
+        plt.rcParams.update({"font.size": 14, "font.family": "Arial", "font.weight": "bold"})
         for idx, subtype in enumerate(self.target):
             ax = axes[idx] if n_types > 1 else axes
             color = self.colors[subtype]
@@ -261,11 +206,22 @@ class HSIPredictor:
                 # Get the highest probability pixel
                 probs = self.predictions[pixel_indices, model_idx]
                 max_idx = pixel_indices[np.argmax(probs)]
-                best_spectrum = self.processed_spectra[:, max_idx]
-                best_spectrum_raw = self.normalize_spectrum(best_spectrum)
-                best_spectrum = self.airpls_baseline(best_spectrum)
-                best_spectrum = self.normalize_spectrum(best_spectrum)
-                best_spectrum = self.smooth_spectrum(best_spectrum)
+
+                # Get the raw spectra
+                raw_spec = self.original_spectra[max_idx]
+                raw_spec = self.interpolate_spectrum(raw_spec, self.img_wavenumbers)
+
+                # Process the spectra
+                corrected, baseline = airpls_baseline(raw_spec)
+                smoothed = smooth_spectrum(corrected)
+
+                ax.plot(
+                    self.wavenumbers, raw_spec, color="#808080", label="Raw Spectrum", linewidth=1, alpha=0.6
+                )
+                ax.plot(
+                    self.wavenumbers, baseline, color="#FFA500", label="Baseline", linewidth=1, linestyle=":"
+                )
+                ax.plot(self.wavenumbers, smoothed, color=color, label="Corrected", linewidth=2)
 
                 # pred_spectra = []
                 # for pixel_idx in spectra_by_type[subtype]:
@@ -284,7 +240,6 @@ class HSIPredictor:
 
                 # std_spectrum = np.std(pred_spectra, axis=0)
 
-                ax.plot(self.wavenumbers, best_spectrum, color=color, label=f"predicted", linewidth=2)
                 # ax.fill_between(
                 #     self.wavenumbers,
                 #     mean_spectrum - std_spectrum,
@@ -297,6 +252,7 @@ class HSIPredictor:
             ax.set_xlabel("Wavenumber (cm$^{-1}$)")
             ax.set_ylabel("Normalized Intensity")
             ax.legend()
+            ax.grid(True, alpha=0.3)
 
         plt.tight_layout()
         plt.savefig(os.path.join(output_dir, "spectral_comparisons.png"), dpi=300, bbox_inches="tight")

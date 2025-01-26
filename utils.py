@@ -38,7 +38,7 @@ def airpls_baseline(y: np.ndarray, lam: float = 1e3, niter: int = 15, tol: float
         w = np.where(d < 0, w_new, 0)
         w = np.clip(w, 1e-6, 1e6)
 
-    return y - z
+    return y - z, z
 
 
 def normalize_spectrum(spectrum: np.ndarray):
