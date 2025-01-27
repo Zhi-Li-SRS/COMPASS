@@ -303,13 +303,13 @@ def main():
         "--library_path", type=str, default="Raman_dataset/library.csv", help="Path to library CSV"
     )
     parser.add_argument(
-        "--image_path",
-        type=str,
-        default="HSI_data/Result of 0116WT-1-sweep-830-860-100.tif",
-        help="Path to HSI image stack",
+        "--image_path", type=str, default="HSI_data/1-Plin1_FB.tif", help="Path to HSI image stack"
     )
     parser.add_argument(
-        "--output_dir", type=str, default="predicted_results/hsi_wt_predict", help="Directory to save results"
+        "--output_dir",
+        type=str,
+        default="predicted_results/hsi_plin1_predict_old",
+        help="Directory to save results",
     )
     parser.add_argument(
         "--target",
