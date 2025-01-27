@@ -4,10 +4,12 @@ from typing import List, Optional, Union
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import pywt
 import rampy as rp
 import torch
 from scipy import sparse
 from scipy.interpolate import interp1d
+from scipy.optimize import curve_fit
 from scipy.sparse.linalg import spsolve
 from sklearn.manifold import TSNE
 
@@ -41,6 +43,55 @@ def airpls_baseline(y: np.ndarray, lam: float = 1e3, niter: int = 15, tol: float
     return y - z, z
 
 
+def modpoly_baseline(spectrum, poly_order=3, max_iter=50, tol=1e-2):
+    """
+    Modified polynomial baseline correction.
+    Iteratively fits polynomial to points likely to be baseline.
+
+    Args:
+        spectrum: Input spectrum array
+        poly_order: Order of polynomial to fit
+        max_iter: Maximum number of iterations
+        tol: Convergence tolerance
+
+    Returns:
+        corrected: Baseline-corrected spectrum
+        baseline: Estimated baseline
+    """
+    x = np.arange(len(spectrum))
+    y = spectrum.copy()
+    x_norm = (x - x.min()) / (x.max() - x.min())
+    window_size = len(x) // 10
+    if window_size % 2 == 0:
+        window_size += 1
+    y_smooth = np.convolve(y, np.ones(window_size) / window_size, mode="valid")
+    y_smooth = np.pad(y_smooth, (window_size // 2, window_size // 2), mode="edge")
+    coeff = np.polyfit(x_norm, y_smooth, poly_order)
+    baseline = np.polyval(coeff, x_norm)
+
+    prev_chisq = float("inf")
+    for _ in range(max_iter):
+        residuals = y - baseline
+
+        weights = 1.0 / (1.0 + np.exp(2.0 * residuals / np.std(residuals)))
+        weights = np.maximum(weights, 0.1)
+
+        # Weighted polynomial fit
+        coeff = np.polyfit(x_norm, y, poly_order, w=weights)
+        baseline = np.polyval(coeff, x_norm)
+
+        # Check convergence
+        chisq = np.sum(weights * (y - baseline) ** 2)
+        if abs(chisq - prev_chisq) < tol:
+            break
+        prev_chisq = chisq
+
+    corrected = y - baseline
+    corrected = np.maximum(corrected, 0)
+
+    return corrected, baseline
+
+
 def normalize_spectrum(spectrum: np.ndarray):
     """Normalize spectrum to max intensity"""
     if np.all(spectrum == 0):
@@ -48,7 +99,7 @@ def normalize_spectrum(spectrum: np.ndarray):
     return spectrum / np.max(spectrum) if np.max(spectrum) != 0 else spectrum
 
 
-def smooth_spectrum(spectrum: np.ndarray, lamda=20):
+def smooth_spectrum(spectrum: np.ndarray, lamda=10):
     """Smooth spectrum using Whittaker smoother"""
     if np.all(spectrum == 0):
         return spectrum

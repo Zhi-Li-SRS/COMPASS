@@ -15,7 +15,7 @@ from scipy.sparse.linalg import spsolve
 from tqdm import tqdm
 
 from model import LipidNet
-from utils import airpls_baseline, normalize_spectrum, smooth_spectrum
+from utils import *
 
 
 class HSIPredictor:
@@ -129,12 +129,6 @@ class HSIPredictor:
                 predictions.append(probs.cpu().numpy())
 
         self.predictions = np.concatenate(predictions, axis=0)
-        for name, model_idx in self.target_indices.items():
-            pred_probs = self.predictions[:, model_idx]
-            print(f"{name}:")
-            print(f"  Max prob: {np.max(pred_probs):.4f}")
-            print(f"  Mean prob: {np.mean(pred_probs):.4f}")
-            print(f"  Pixels > threshold: {np.sum(pred_probs > self.prob_thresh)}")
 
         prediction_maps = {}
 
@@ -183,38 +177,91 @@ class HSIPredictor:
         plt.savefig(os.path.join(output_dir, "merged.png"), dpi=300, bbox_inches="tight")
         plt.close()
 
+        print("Saving high probability spectra...")
+        spectra_data = {"wavenumber": self.wavenumbers}
+        valid_predictions = {}
+        for name, model_idx in self.target_indices.items():
+            prob_values = self.predictions[:, model_idx].copy()
+            prob_values[background_mask.flatten()] = 0
+            max_prob = np.max(prob_values)
+            print(f"\n{name}:")
+            print(f"Maximum probability: {max_prob:.4f}")
+
+            if max_prob >= self.prob_thresh:
+                max_prob_idx = np.argmax(prob_values)
+                raw_spec = self.original_spectra[max_prob_idx]
+                interpolated_spec = self.interpolate_spectrum(raw_spec, self.img_wavenumbers)
+
+                spectra_data[f"{name}_raw"] = interpolated_spec
+                spectra_data[f"{name}_prob"] = max_prob
+                valid_predictions[name] = True
+                print(f"✓ Saved spectrum (prob: {max_prob:.4f})")
+            else:
+                valid_predictions[name] = False
+                print(f"✗ No valid prediction above threshold ({self.prob_thresh})")
+
+        if not any(valid_predictions.values()):
+            print("\nWarning: No predictions above probability threshold!")
+            return
+
+        # Save to CSV
+        df = pd.DataFrame(spectra_data)
+        csv_path = os.path.join(output_dir, "high_prob_spectra.csv")
+        df.to_csv(csv_path, index=False)
+        print(f"Saved spectra to {csv_path}")
+
         # Plot spectral comparisons with matching colors
-        self._plot_spectral_comparisons(spectra_by_type, output_dir)
+        self._plot_spectral_comparisons(spectra_by_type, output_dir, use_csv=False)
         print("All visualizations saved!")
 
-    def _plot_spectral_comparisons(self, spectra_by_type: Dict[str, List[np.ndarray]], output_dir: str):
+    def _plot_spectral_comparisons(
+        self, spectra_by_type: Dict[str, List[np.ndarray]], output_dir: str, use_csv=False
+    ):
         """Plot predicted spectra vs references"""
         n_types = len(self.target)
         fig, axes = plt.subplots(1, n_types, figsize=(5 * n_types, 5))
         plt.style.use("seaborn-v0_8-pastel")
         plt.rcParams.update({"font.size": 14, "font.family": "Arial", "font.weight": "bold"})
+        spectra_df = None
+        if use_csv:
+            csv_path = os.path.join(output_dir, "high_prob_spectra.csv")
+            if not os.path.exists(csv_path):
+                raise FileNotFoundError(f"No saved spectra found at {csv_path}")
+            spectra_df = pd.read_csv(csv_path)
+
         for idx, subtype in enumerate(self.target):
             ax = axes[idx] if n_types > 1 else axes
             color = self.colors[subtype]
+            raw_spec = None
+            # Plot reference spectrum
             ref_spectrum = self.ref[self.ref["name"] == subtype].iloc[0, 1:].values
             ax.plot(self.wavenumbers, ref_spectrum, "k-", label=f"{subtype}", linewidth=2)
 
-            if spectra_by_type[subtype]:
-                model_idx = self.target_indices[subtype]
-                pixel_indices = spectra_by_type[subtype]
+            if use_csv:
+                if f"{subtype}_raw" in spectra_df.columns:
+                    raw_spec = spectra_df[f"{subtype}_raw"].values
 
-                # Get the highest probability pixel
-                probs = self.predictions[pixel_indices, model_idx]
-                max_idx = pixel_indices[np.argmax(probs)]
+            else:
+                if spectra_by_type[subtype]:
+                    model_idx = self.target_indices[subtype]
+                    pixel_indices = spectra_by_type[subtype]
 
-                # Get the raw spectra
-                raw_spec = self.original_spectra[max_idx]
-                raw_spec = self.interpolate_spectrum(raw_spec, self.img_wavenumbers)
+                    # Get the highest probability pixel
+                    probs = self.predictions[pixel_indices, model_idx]
+                    max_idx = pixel_indices[np.argmax(probs)]
 
-                # Process the spectra
-                corrected, baseline = airpls_baseline(raw_spec)
-                smoothed = smooth_spectrum(corrected)
+                    # Get the raw spectra
+                    raw_spec = self.original_spectra[max_idx]
+                    raw_spec = self.interpolate_spectrum(raw_spec, self.img_wavenumbers)
 
+            if raw_spec is not None:
+                raw_spec = normalize_spectrum(raw_spec)
+
+                # Apply wavelet baseline correction
+                corrected, baseline = modpoly_baseline(raw_spec)
+                smoothed = smooth_spectrum(normalize_spectrum(corrected))
+
+                # Plot spectra
                 ax.plot(
                     self.wavenumbers, raw_spec, color="#808080", label="Raw Spectrum", linewidth=1, alpha=0.6
                 )
@@ -223,32 +270,7 @@ class HSIPredictor:
                 )
                 ax.plot(self.wavenumbers, smoothed, color=color, label="Corrected", linewidth=2)
 
-                # pred_spectra = []
-                # for pixel_idx in spectra_by_type[subtype]:
-                #     raw_spectrum = self.original_spectra[pixel_idx]
-                #     # processed = self.baseline_als(raw_spectrum)
-                #     # processed = self.normalize_spectrum(processed)
-                #     # processed = self.smooth_spectrum(processed)
-                #     interpolated = self.interpolate_spectrum(raw_spectrum, self.img_wavenumbers)
-                #     pred_spectra.append(interpolated)
-
-                # pred_spectra = np.array(pred_spectra)
-                # mean_spectrum = np.mean(pred_spectra, axis=0)
-                # processed = self.modpoly_baseline(mean_spectrum)
-                # processed = self.normalize_spectrum(processed)
-                # mean_spectrum = self.smooth_spectrum(processed)
-
-                # std_spectrum = np.std(pred_spectra, axis=0)
-
-                # ax.fill_between(
-                #     self.wavenumbers,
-                #     mean_spectrum - std_spectrum,
-                #     mean_spectrum + std_spectrum,
-                #     color=color,
-                #     alpha=0.2,
-                # )
-
-            ax.set_title(subtype)
+            ax.set_title(subtype, fontweight="bold")
             ax.set_xlabel("Wavenumber (cm$^{-1}$)")
             ax.set_ylabel("Normalized Intensity")
             ax.legend()
@@ -257,6 +279,31 @@ class HSIPredictor:
         plt.tight_layout()
         plt.savefig(os.path.join(output_dir, "spectral_comparisons.png"), dpi=300, bbox_inches="tight")
         plt.close()
+
+        # pred_spectra = []
+        # for pixel_idx in spectra_by_type[subtype]:
+        #     raw_spectrum = self.original_spectra[pixel_idx]
+        #     # processed = self.baseline_als(raw_spectrum)
+        #     # processed = self.normalize_spectrum(processed)
+        #     # processed = self.smooth_spectrum(processed)
+        #     interpolated = self.interpolate_spectrum(raw_spectrum, self.img_wavenumbers)
+        #     pred_spectra.append(interpolated)
+
+        # pred_spectra = np.array(pred_spectra)
+        # mean_spectrum = np.mean(pred_spectra, axis=0)
+        # processed = self.modpoly_baseline(mean_spectrum)
+        # processed = self.normalize_spectrum(processed)
+        # mean_spectrum = self.smooth_spectrum(processed)
+
+        # std_spectrum = np.std(pred_spectra, axis=0)
+
+        # ax.fill_between(
+        #     self.wavenumbers,
+        #     mean_spectrum - std_spectrum,
+        #     mean_spectrum + std_spectrum,
+        #     color=color,
+        #     alpha=0.2,
+        # )
 
 
 def main():
@@ -288,7 +335,8 @@ def main():
 
     predictor = HSIPredictor(model_path=args.model_path, library_path=args.library_path, target=args.target)
 
-    predictor.predict_hsi(args.image_path, args.output_dir)
+    # predictor.predict_hsi(args.image_path, args.output_dir)
+    predictor._plot_spectral_comparisons(None, args.output_dir, use_csv=True)
 
 
 if __name__ == "__main__":
