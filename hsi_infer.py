@@ -28,9 +28,9 @@ class HSIPredictor:
             library_path: Path to library CSV with reference spectra
             target_subtypes: List of subtypes to predict
         """
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cpu")
         self.target = target
-        self.prob_thresh = 0.75
+        self.prob_thresh = 0.9
         self.colors = {
             "d7-glucose": "#FF0000",  # Red
             "d2-fructose": "#00FF00",  # Green
@@ -183,30 +183,28 @@ class HSIPredictor:
         for name, model_idx in self.target_indices.items():
             prob_values = self.predictions[:, model_idx].copy()
             prob_values[background_mask.flatten()] = 0
-            max_prob = np.max(prob_values)
+            mask = prob_values > 0.9
             print(f"\n{name}:")
-            print(f"Maximum probability: {max_prob:.4f}")
+            print(f"Pixels above 0.9 probability: {np.sum(mask)}")
 
-            if max_prob >= self.prob_thresh:
-                max_prob_idx = np.argmax(prob_values)
-                raw_spec = self.original_spectra[max_prob_idx]
-                interpolated_spec = self.interpolate_spectrum(raw_spec, self.img_wavenumbers)
-
-                spectra_data[f"{name}_raw"] = interpolated_spec
-                spectra_data[f"{name}_prob"] = max_prob
+            if np.any(mask):
+                selected_spec = self.original_spectra[mask]
+                interpolated_spec = [
+                    self.interpolate_spectrum(spec, self.img_wavenumbers) for spec in selected_spec
+                ]
+                avg_spec = np.mean(interpolated_spec, axis=0)
+                avg_spec = normalize_spectrum(avg_spec)
+                spectra_data[f"{name}_avg"] = avg_spec
+                spectra_data[f"{name}_count"] = len(selected_spec)
                 valid_predictions[name] = True
-                print(f"✓ Saved spectrum (prob: {max_prob:.4f})")
+                print(f"✓ Saved average spectrum ({len(selected_spec)} pixels)")
             else:
                 valid_predictions[name] = False
-                print(f"✗ No valid prediction above threshold ({self.prob_thresh})")
-
-        if not any(valid_predictions.values()):
-            print("\nWarning: No predictions above probability threshold!")
-            return
+                print(f"✗ No valid prediction above 0.9")
 
         # Save to CSV
         df = pd.DataFrame(spectra_data)
-        csv_path = os.path.join(output_dir, "high_prob_spectra.csv")
+        csv_path = os.path.join(output_dir, "avg_spectra.csv")
         df.to_csv(csv_path, index=False)
         print(f"Saved spectra to {csv_path}")
 
@@ -224,7 +222,7 @@ class HSIPredictor:
         plt.rcParams.update({"font.size": 14, "font.family": "Arial", "font.weight": "bold"})
         spectra_df = None
         if use_csv:
-            csv_path = os.path.join(output_dir, "high_prob_spectra.csv")
+            csv_path = os.path.join(output_dir, "avg_spectra.csv")
             if not os.path.exists(csv_path):
                 raise FileNotFoundError(f"No saved spectra found at {csv_path}")
             spectra_df = pd.read_csv(csv_path)
@@ -232,48 +230,38 @@ class HSIPredictor:
         for idx, subtype in enumerate(self.target):
             ax = axes[idx] if n_types > 1 else axes
             color = self.colors[subtype]
-            raw_spec = None
+
             # Plot reference spectrum
             ref_spectrum = self.ref[self.ref["name"] == subtype].iloc[0, 1:].values
-            ax.plot(self.wavenumbers, ref_spectrum, "k-", label=f"{subtype}", linewidth=2)
+            ax.plot(
+                self.wavenumbers, ref_spectrum, color="#404040", label=f"{subtype}", linewidth=2, alpha=0.8
+            )
 
-            if use_csv:
-                if f"{subtype}_raw" in spectra_df.columns:
-                    raw_spec = spectra_df[f"{subtype}_raw"].values
-
+            pred_spec = None
+            if use_csv and spectra_df is not None:
+                if f"{subtype}_avg" in spectra_df.columns:
+                    pred_spec = spectra_df[f"{subtype}_avg"].values
             else:
                 if spectra_by_type[subtype]:
-                    model_idx = self.target_indices[subtype]
-                    pixel_indices = spectra_by_type[subtype]
+                    selected_spec = [
+                        self.interpolate_spectrum(self.original_spectra[i], self.img_wavenumbers)
+                        for i in spectra_by_type[subtype]
+                    ]
+                    pred_spec = np.mean(selected_spec, axis=0)
+                    pred_spec = normalize_spectrum(pred_spec)
 
-                    # Get the highest probability pixel
-                    probs = self.predictions[pixel_indices, model_idx]
-                    max_idx = pixel_indices[np.argmax(probs)]
-
-                    # Get the raw spectra
-                    raw_spec = self.original_spectra[max_idx]
-                    raw_spec = self.interpolate_spectrum(raw_spec, self.img_wavenumbers)
-
-            if raw_spec is not None:
-                raw_spec = normalize_spectrum(raw_spec)
-
-                # Apply wavelet baseline correction
-                corrected, baseline = modpoly_baseline(raw_spec)
+            if pred_spec is not None:
+                corrected, baseline = modpoly_baseline(pred_spec)
                 smoothed = smooth_spectrum(normalize_spectrum(corrected))
+                ax.plot(self.wavenumbers, pred_spec, color=color, linestyle="--", label="Raw")
 
-                # Plot spectra
-                ax.plot(
-                    self.wavenumbers, raw_spec, color="#808080", label="Raw Spectrum", linewidth=1, alpha=0.6
-                )
-                ax.plot(
-                    self.wavenumbers, baseline, color="#FFA500", label="Baseline", linewidth=1, linestyle=":"
-                )
+                ax.plot(self.wavenumbers, baseline, color="#FF6B6B", linestyle="-.", label="Baseline")
                 ax.plot(self.wavenumbers, smoothed, color=color, label="Corrected", linewidth=2)
 
             ax.set_title(subtype, fontweight="bold")
             ax.set_xlabel("Wavenumber (cm$^{-1}$)")
             ax.set_ylabel("Normalized Intensity")
-            ax.legend()
+            ax.legend(loc="upper right")
             ax.grid(True, alpha=0.3)
 
         plt.tight_layout()
@@ -335,8 +323,8 @@ def main():
 
     predictor = HSIPredictor(model_path=args.model_path, library_path=args.library_path, target=args.target)
 
-    # predictor.predict_hsi(args.image_path, args.output_dir)
-    predictor._plot_spectral_comparisons(None, args.output_dir, use_csv=True)
+    predictor.predict_hsi(args.image_path, args.output_dir)
+    # predictor._plot_spectral_comparisons(None, args.output_dir, use_csv=True)
 
 
 if __name__ == "__main__":

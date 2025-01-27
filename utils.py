@@ -43,7 +43,7 @@ def airpls_baseline(y: np.ndarray, lam: float = 1e3, niter: int = 15, tol: float
     return y - z, z
 
 
-def modpoly_baseline(spectrum, poly_order=3, max_iter=50, tol=1e-2):
+def modpoly_baseline(spectrum, poly_order=2, max_iter=50, tol=1e-2):
     """
     Modified polynomial baseline correction.
     Iteratively fits polynomial to points likely to be baseline.
@@ -99,7 +99,7 @@ def normalize_spectrum(spectrum: np.ndarray):
     return spectrum / np.max(spectrum) if np.max(spectrum) != 0 else spectrum
 
 
-def smooth_spectrum(spectrum: np.ndarray, lamda=10):
+def smooth_spectrum(spectrum: np.ndarray, lamda=5):
     """Smooth spectrum using Whittaker smoother"""
     if np.all(spectrum == 0):
         return spectrum
