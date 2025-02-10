@@ -68,12 +68,15 @@ def augment_data(
     return np.array(augmented_spectra)
 
 
-def create_augmented_dataset(input_file, output_file, background_file, n_augment=400):
+def create_augmented_dataset(input_file, output_file, background_file, n_augment=300):
     """
     Create augmented dataset from original spectra.
     """
     df = pd.read_csv(input_file)
     names = df.iloc[:, 0]  # Get the names of the lipids
+    filter = ["d7-glucose", "d2-fructose", "d-tyrosine", "d-methionine", "d7-leucine"]
+    df = df[df["name"].isin(filter)]
+    names = df.iloc[:, 0]  # Update the names of the new lipids
     wavenumbers = df.columns[1:].astype(float).values
     spectra = df.iloc[:, 1:].values
 
@@ -100,7 +103,7 @@ def create_augmented_dataset(input_file, output_file, background_file, n_augment
 if __name__ == "__main__":
 
     df_augmented = create_augmented_dataset(
-        "Raman_dataset/library.csv", "Raman_dataset/train_data.csv", "background/CD_HSI_76.csv"
+        "Raman_dataset/library.csv", "Raman_dataset/val_data_5sub.csv", "background/CD_HSI_76.csv"
     )
 
     print("Data preprocessing and augmentation completed!")

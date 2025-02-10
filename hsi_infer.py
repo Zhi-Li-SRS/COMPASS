@@ -100,11 +100,11 @@ class HSIPredictor:
         self.img_wavenumbers = np.linspace(self.wavenumbers[0], self.wavenumbers[-1], N)
         self.original_spectra = image.reshape(N, -1).T
 
+        # Create mask for background pixels
         background_mask = np.all(self.original_spectra == 0, axis=1)
         background_mask = background_mask.reshape(height, width)
 
         spectra = self.original_spectra.copy()
-        self.processed_spectra = np.zeros((len(self.wavenumbers), height * width))
         predictions = []
         spectra_by_type = {name: [] for name in self.target}
 
@@ -112,11 +112,10 @@ class HSIPredictor:
         total_batches = (height * width + batch_size - 1) // batch_size
 
         for i in tqdm(range(0, height * width, batch_size), total=total_batches, desc="Batch Progress"):
-            end_idx = min(i + batch_size, height * width)
+            end_idx = min(i + batch_size, height * width)  # Ensure we don't go out of bounds
             batch = spectra[i:end_idx]
             batch = np.array([self.preprocess_spectrum(s) for s in batch])
             processed_batch = np.array([self.interpolate_spectrum(s, self.img_wavenumbers) for s in batch])
-            self.processed_spectra[:, i : i + len(processed_batch)] = processed_batch.T
             with torch.no_grad():
                 batch_tensor = torch.FloatTensor(processed_batch).to(self.device)
                 batch_tensor = batch_tensor.unsqueeze(1)
@@ -130,7 +129,7 @@ class HSIPredictor:
 
         self.predictions = np.concatenate(predictions, axis=0)
 
-        prediction_maps = {}
+        prediction_maps = {}  # Store prediction maps for each target
 
         merged_map = np.zeros((height, width, 3))
 
