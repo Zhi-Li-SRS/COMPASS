@@ -272,10 +272,10 @@ def main():
     # Model parameters
     parser.add_argument("--input_channels", type=int, default=1, help="Number of input channels")
     parser.add_argument("--base_channels", type=int, default=8, help="Number of base channels in the model")
-    parser.add_argument("--num_classes", type=int, default=18, help="Number of classes in the dataset")
+    parser.add_argument("--num_classes", type=int, default=5, help="Number of classes in the dataset")
 
     # Training parameters
-    parser.add_argument("--batch_size", type=int, default=256, help="Training batch size")
+    parser.add_argument("--batch_size", type=int, default=64, help="Training batch size")
     parser.add_argument("--epochs", type=int, default=200, help="Number of epochs to train")
     parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
     parser.add_argument("--weight_decay", type=float, default=1e-5, help="Weight decay for optimizer")
@@ -301,13 +301,13 @@ def main():
 
     # Data parameters
     parser.add_argument(
-        "--train_data_path", type=str, default="Raman_dataset/train_data.csv", help="Path to the dataset"
+        "--train_data_path", type=str, default="Raman_dataset/train_data_5sub.csv", help="Path to the dataset"
     )
     parser.add_argument(
-        "--val_data_path", type=str, default="Raman_dataset/val_data.csv", help="Path to the dataset"
+        "--val_data_path", type=str, default="Raman_dataset/val_data_5sub.csv", help="Path to the dataset"
     )
     parser.add_argument(
-        "--checkpoint_dir", type=str, default="checkpoints", help="Directory to save checkpoints"
+        "--checkpoint_dir", type=str, default="checkpoints_5sub", help="Directory to save checkpoints"
     )
     parser.add_argument("--save_freq", type=int, default=50, help="Frequency of saving checkpoints (epochs)")
 

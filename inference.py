@@ -232,10 +232,13 @@ def main():
     """Main function to run inference"""
     parser = argparse.ArgumentParser(description="LipidNet Inference")
     parser.add_argument(
-        "--model_path", type=str, default="checkpoints/best_model.pth", help="Path to saved model"
+        "--model_path", type=str, default="checkpoints_5sub/best_model.pth", help="Path to saved model"
     )
     parser.add_argument(
-        "--data_path", type=str, default="Raman_dataset/library.csv", help="Path to original spectra data"
+        "--data_path",
+        type=str,
+        default="Raman_dataset/val_data_5sub.csv",
+        help="Path to original spectra data",
     )
     parser.add_argument(
         "--output_dir",
@@ -243,7 +246,7 @@ def main():
         default="predicted_results/learning_performance",
         help="Directory to save results",
     )
-    parser.add_argument("--num_classes", type=int, default=18, help="Number of classes")
+    parser.add_argument("--num_classes", type=int, default=5, help="Number of classes")
     parser.add_argument("--batch_size", type=int, default=128, help="Batch size for feature extraction")
     parser.add_argument("--fig_dpi", type=int, default=300, help="DPI for saved figures")
 
@@ -251,8 +254,8 @@ def main():
 
     inference = Infer(args)
     features = inference.extract_features()
-    # inference.plot_tsne_comparison(features)
-    inference.plot_gradcam()
+    inference.plot_tsne_comparison(features)
+    # inference.plot_gradcam()
 
 
 if __name__ == "__main__":
