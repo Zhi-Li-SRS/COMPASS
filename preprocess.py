@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from scipy.interpolate import interp1d
 
-def normalize(array, max=1, min=0):
+def normalize(array, max=1, min=0, eps=1e-8):
     """
     Normalize array by minimum and maximum values
     """
@@ -12,9 +12,9 @@ def normalize(array, max=1, min=0):
     max_val = np.max(array)
 
     if np.all(array==0):
-        norm = array
+        raise Exception('All values in array are zero.')
     else:
-        norm = ((array-min_val)/(max_val-min_val))*(max-min)+min
+        norm = ((array - min_val)/(max_val - min_val + eps))*(max - min) + min
     return norm
 
 

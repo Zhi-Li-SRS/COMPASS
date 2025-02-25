@@ -3,6 +3,7 @@ import numpy as np
 import seaborn as sns
 import torch
 import torch.nn as nn
+import torch.nn.functional as f
 from sklearn.metrics import accuracy_score, auc, confusion_matrix, precision_recall_fscore_support, roc_curve
 
 
@@ -23,6 +24,36 @@ def correlation_loss(x, y):
     
     return 1 - correlation
 
+
+def cos_sim_loss(x, y):
+    """Cosine Similarity loss between two tensors"""
+    cosine_loss = nn.CosineSimilarity(dim=1)
+    return 1 - cosine_loss(x, y).mean()
+
+def msle_loss(x, y):
+    """Mean Squared Logarithmic Error loss between two tensors"""
+    x_log = torch.log1p(x)
+    y_log = torch.log1p(y)
+    return f.mse_loss(x_log, y_log)
+
+class Denoise_Loss(nn.Module):
+    """Custom scale-invariant loss function for denoising
+    
+    Args:
+        sim_weight (float): Weight for cosine similarity loss. 
+    """
+    def __init__ (self, sim_weight = 0.5):
+        super().__init__()
+        self.sim_weight = sim_weight
+
+    def forward(self, pred, target):
+        cs = self.sim_weight * cos_sim_loss(pred, target)
+        msle = (1 - self.sim_weight) * msle_loss(pred, target)
+        return cs + msle
+
+
+# def denoise_loss(x, y, p=0.5):
+#     return p * cos_sim_loss(x, y) + (1 - p) * msle_loss(x, y)
 
 class Loss(nn.Module):
     """
