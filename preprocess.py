@@ -3,6 +3,7 @@ import os
 import numpy as np
 import pandas as pd
 from scipy.interpolate import interp1d
+from scipy.stats import skewnorm
 
 def normalize(array, max=1, min=0, eps=1e-8):
     """
@@ -31,28 +32,28 @@ def preprocess_data(input_file, output_file):
     return df_transposed
 
 
-def augment_data(spectrum, wavenumbers, background, n_augment=100, noise_level=0.1, bg_level=0.75, bg_scale=0.25, max_shift=15):
+def augment_data(spectrum, wavenumbers, background, n_augment=100, noise_level=0.2, max_shift=15):
     """
     Augment a single spectrum by adding noise and random shifts.
     Ensures all values are positive and within reasonable range for Raman spectra.
     """
     augmented_spectra = []
-    original_max = np.max(spectrum)  # Get original spectrum's max valu
+    original_max = np.max(spectrum)  # Get original spectrum's max value
 
-    bg_mult = np.sort(np.random.normal(bg_level * original_max, bg_scale * noise_level * original_max, n_augment))
+    bg_mult = np.sort(skewnorm.rvs(4, loc=0.3, scale=0.4, size=n_augment))
     background = np.outer(bg_mult, background)
+    noise_mult = np.sort(np.abs(skewnorm.rvs(-4, loc=0.2, scale =0.05, size=100)))
 
-    noise = np.random.normal(0, noise_level * original_max, len(background))
-    noise = background + noise
+    # noise = np.random.normal(0, noise_mult * original_max, len(spectrum))
 
-    spectrum = (spectrum + noise.T).T
+    spectrum = (spectrum + background).T
 
     for i in range(n_augment):
         # bg_mult = np.random.normal(bg_level * original_max, bg_scale * noise_level * original_max)
         # background = bg_mult * background
 
-        # noise = np.random.normal(0, noise_level * original_max, len(spectrum))
-        noisy_spectrum = spectrum + noise[i]
+        noise = np.random.normal(0, noise_mult[i] * original_max, len(spectrum))
+        noisy_spectrum = spectrum[:, i] + noise
         # noisy_spectrum = np.maximum(noisy_spectrum, 0)
 
         shift = np.random.uniform(-max_shift / 2, max_shift / 2)  # Reduced shift range
@@ -66,7 +67,7 @@ def augment_data(spectrum, wavenumbers, background, n_augment=100, noise_level=0
         # aug_spectrum = np.maximum(aug_spectrum, 0)
         aug_spectrum = aug_spectrum + 1e-6
         aug_spectrum = aug_spectrum / np.max(aug_spectrum)
-        aug_spectrum = aug_spectrum + background
+        aug_spectrum = aug_spectrum # + background[]
         augmented_spectra.append(aug_spectrum)
 
     return np.array(augmented_spectra)
@@ -102,7 +103,7 @@ def create_augmented_dataset(input_file, output_file, background_file, n_augment
     df_augmented.to_csv(output_file, index=False)
     return df_augmented
 
-
+import matplotlib.pyplot as plt
 if __name__ == "__main__":
 
     df_augmented = create_augmented_dataset("dataset/library.csv", "dataset/val_data.csv", "background/water_HSI_76.csv")

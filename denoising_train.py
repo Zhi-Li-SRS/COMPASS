@@ -18,7 +18,7 @@ from utils import *
 from vis_utils import *
 
 import random
-from matplotlib.pyplot import plt
+import matplotlib.pyplot as plt
 
 class Raman_Trainer:
     def __init__(self, args):
