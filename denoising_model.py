@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import matplotlib.pyplot as plt
 
 class Conv1d(nn.Module):
     """Basic Conv1d block"""
@@ -35,28 +36,31 @@ class ResBlock1D(nn.Module):
         return self.relu(out)
     
 class RamanNet(nn.Module):
-
     def __init__(self, input_channels=1, base_channels=8, num_classes=25):
         super(RamanNet, self).__init__()
-
+        self.in_channels = base_channels
         # Encoder
         self.encoder = nn.Sequential(
-            Conv1d(input_channels, base_channels, kernel_size=3, stride=1, padding=1),
-            self._make_layer(ResBlock1D, out_channels=base_channels, blocks=2),
-            self._make_layer(ResBlock1D, out_channels=base_channels * 2, blocks=2),
-            self._make_layer(ResBlock1D, out_channels=base_channels * 4, blocks=2),
-            self._make_layer(ResBlock1D, out_channels=base_channels * 8, blocks=2)
+            nn.Conv1d(input_channels, base_channels, kernel_size=3, padding=1),
+            nn.ReLU(True),
+            nn.Conv1d(base_channels, base_channels * 2, kernel_size=3, padding=1),
+            nn.ReLU(True),
+            nn.Conv1d(base_channels * 2, base_channels * 4, kernel_size=3, padding=1),
+            nn.ReLU(True),
+            nn.Conv1d(base_channels * 4, base_channels * 8, kernel_size=3, padding=1),
+            nn.ReLU(True),      
         )
         
         # Decoder
         self.decoder = nn.Sequential(
-            nn.ConvTranspose1d(base_channels * 8, base_channels * 4, kernel_size=4, stride=2, padding=1),
+            nn.ConvTranspose1d(base_channels * 8, base_channels * 4, kernel_size=3, padding=1),
             nn.ReLU(True),
-            nn.ConvTranspose1d(base_channels * 4, base_channels * 2, kernel_size=4, stride=2, padding=1),
+            nn.ConvTranspose1d(base_channels * 4, base_channels * 2, kernel_size=3, padding=1),
             nn.ReLU(True),
-            nn.ConvTranspose1d(base_channels * 2, base_channels, kernel_size=4, stride=2, padding=1),
+            nn.ConvTranspose1d(base_channels * 2, base_channels, kernel_size=3, padding=1),
             nn.ReLU(True),
-            nn.ConvTranspose1d(base_channels, input_channels, kernel_size=4, stride=2, padding=1)
+            nn.ConvTranspose1d(base_channels, input_channels, kernel_size=3, padding=1),
+            nn.ReLU(True)
         )
 
         # Global Pooling to get a fixed-size latent representation
@@ -87,8 +91,9 @@ class RamanNet(nn.Module):
 
     def forward(self, x,):
         latent = self.encoder(x)  # Extract features
+        print(latent.size())
         pooled_latent = self.global_pool(latent)  # Shape: (N, latent_dim, 1)
-        reconstructed = self.decoder(latent)
-        classification = self.classifier(pooled_latent)
+        classification = self.classifier(pooled_latent).detach()  # Shape: (N, num_classes)
+        reconstructed = self.decoder(latent) # Shape: (N, input_channels, L)
         return reconstructed, classification
         

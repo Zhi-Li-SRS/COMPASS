@@ -18,6 +18,7 @@ def normalize(array, max=1, min=0, eps=1e-8):
     return norm
 
 
+
 def preprocess_data(input_file, output_file):
     """
     Preprocess the spectral data file by transposing and reformatting.
@@ -30,7 +31,7 @@ def preprocess_data(input_file, output_file):
     return df_transposed
 
 
-def augment_data(spectrum, wavenumbers, background, n_augment=100, noise_level=0.5, bg_level=1.75, bg_scale=1, max_shift=15):
+def augment_data(spectrum, wavenumbers, background, n_augment=100, noise_level=0.1, bg_level=0.75, bg_scale=0.25, max_shift=15):
     """
     Augment a single spectrum by adding noise and random shifts.
     Ensures all values are positive and within reasonable range for Raman spectra.
@@ -38,13 +39,21 @@ def augment_data(spectrum, wavenumbers, background, n_augment=100, noise_level=0
     augmented_spectra = []
     original_max = np.max(spectrum)  # Get original spectrum's max valu
 
-    for _ in range(n_augment):
-        bg_mult = np.random.normal(bg_level * original_max, bg_scale * noise_level * original_max)
-        background = bg_mult * background
+    bg_mult = np.sort(np.random.normal(bg_level * original_max, bg_scale * noise_level * original_max, n_augment))
+    background = np.outer(bg_mult, background)
 
-        noise = np.random.normal(0, noise_level * original_max, len(spectrum))
-        noisy_spectrum = spectrum + noise
-        noisy_spectrum = np.maximum(noisy_spectrum, 0)
+    noise = np.random.normal(0, noise_level * original_max, len(background))
+    noise = background + noise
+
+    spectrum = (spectrum + noise.T).T
+
+    for i in range(n_augment):
+        # bg_mult = np.random.normal(bg_level * original_max, bg_scale * noise_level * original_max)
+        # background = bg_mult * background
+
+        # noise = np.random.normal(0, noise_level * original_max, len(spectrum))
+        noisy_spectrum = spectrum + noise[i]
+        # noisy_spectrum = np.maximum(noisy_spectrum, 0)
 
         shift = np.random.uniform(-max_shift / 2, max_shift / 2)  # Reduced shift range
         shifted_wavenumbers = wavenumbers + shift
@@ -54,7 +63,7 @@ def augment_data(spectrum, wavenumbers, background, n_augment=100, noise_level=0
         )
         aug_spectrum = interp_func(wavenumbers)
 
-        aug_spectrum = np.maximum(aug_spectrum, 0)
+        # aug_spectrum = np.maximum(aug_spectrum, 0)
         aug_spectrum = aug_spectrum + 1e-6
         aug_spectrum = aug_spectrum / np.max(aug_spectrum)
         aug_spectrum = aug_spectrum + background
@@ -96,6 +105,6 @@ def create_augmented_dataset(input_file, output_file, background_file, n_augment
 
 if __name__ == "__main__":
 
-    df_augmented = create_augmented_dataset("dataset/library.csv", "dataset/val_data.csv", "background/CD_HSI_76.csv")
+    df_augmented = create_augmented_dataset("dataset/library.csv", "dataset/val_data.csv", "background/water_HSI_76.csv")
 
     print("Data preprocessing and augmentation completed!")
