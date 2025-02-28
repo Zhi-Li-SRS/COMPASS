@@ -32,7 +32,7 @@ def preprocess_data(input_file, output_file):
     return df_transposed
 
 
-def augment_data(spectrum, wavenumbers, background, n_augment=100, noise_level=0.2, max_shift=15):
+def augment_data(spectrum, wavenumbers, background, n_augment=100, noise_level=0.1, bg_level=0.5, max_shift=15):
     """
     Augment a single spectrum by adding noise and random shifts.
     Ensures all values are positive and within reasonable range for Raman spectra.
@@ -40,20 +40,15 @@ def augment_data(spectrum, wavenumbers, background, n_augment=100, noise_level=0
     augmented_spectra = []
     original_max = np.max(spectrum)  # Get original spectrum's max value
 
-    bg_mult = np.sort(skewnorm.rvs(4, loc=0.3, scale=0.4, size=n_augment))
-    background = np.outer(bg_mult, background)
-    noise_mult = np.sort(np.abs(skewnorm.rvs(-4, loc=0.2, scale =0.05, size=100)))
+    bg_mult = np.sort(np.maximum(np.random.normal(bg_level, 2 * noise_level, n_augment), 2 * noise_level))
+    # background = np.outer(bg_mult, background)
+    noise_mult = np.sort(np.maximum(np.abs(skewnorm.rvs(-4, loc=noise_level, scale =0.01, size=n_augment)), 0.5 * noise_level))
 
     # noise = np.random.normal(0, noise_mult * original_max, len(spectrum))
 
-    spectrum = (spectrum + background).T
-
     for i in range(n_augment):
-        # bg_mult = np.random.normal(bg_level * original_max, bg_scale * noise_level * original_max)
-        # background = bg_mult * background
-
         noise = np.random.normal(0, noise_mult[i] * original_max, len(spectrum))
-        noisy_spectrum = spectrum[:, i] + noise
+        noisy_spectrum = spectrum + noise
         # noisy_spectrum = np.maximum(noisy_spectrum, 0)
 
         shift = np.random.uniform(-max_shift / 2, max_shift / 2)  # Reduced shift range
@@ -64,10 +59,13 @@ def augment_data(spectrum, wavenumbers, background, n_augment=100, noise_level=0
         )
         aug_spectrum = interp_func(wavenumbers)
 
+        background_2 = bg_mult[i] * background
+
+
         # aug_spectrum = np.maximum(aug_spectrum, 0)
         aug_spectrum = aug_spectrum + 1e-6
         aug_spectrum = aug_spectrum / np.max(aug_spectrum)
-        aug_spectrum = aug_spectrum # + background[]
+        aug_spectrum = aug_spectrum + background_2
         augmented_spectra.append(aug_spectrum)
 
     return np.array(augmented_spectra)
@@ -105,7 +103,23 @@ def create_augmented_dataset(input_file, output_file, background_file, n_augment
 
 import matplotlib.pyplot as plt
 if __name__ == "__main__":
+    classification_path = "dataset/classification_"
+    denoising_path = "dataset/denoising_"
+    background_path = "background/water_HSI_76.csv"
 
-    df_augmented = create_augmented_dataset("dataset/library.csv", "dataset/val_data.csv", "background/water_HSI_76.csv")
+    classification_df_augmented = create_augmented_dataset(
+        input_file=classification_path + "library.csv",
+        output_file=classification_path + "val_data.csv",
+        background_file="background/water_HSI_76.csv"
+    )
+
+    denoising_df_augmented = create_augmented_dataset(
+        input_file=denoising_path + "library.csv",
+        output_file=denoising_path + "val_data.csv",
+        background_file="background/water_HSI_76.csv"
+    )
+    # lipid = df_augmented.iloc[105:131, 1:].T
+    # plt.plot(lipid)
+    # plt.show()
 
     print("Data preprocessing and augmentation completed!")

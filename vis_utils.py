@@ -232,7 +232,7 @@ def plot_augmented_spectra(file_path, n_samples=20):
 
 if __name__ == "__main__":
     os.makedirs("figures", exist_ok=True)
-    orig_file_path = "dataset/library.csv"
+    orig_file_path = "dataset/classification_library.csv"
     aug_file_path = "dataset/data_aug.csv"
     plot_original_spectra(orig_file_path)
     plot_augmented_spectra(aug_file_path)

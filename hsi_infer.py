@@ -242,7 +242,7 @@ def main():
         "--model_path", type=str, default="checkpoints/best_model.pth", help="Path to pretrained model"
     )
     parser.add_argument(
-        "--library_path", type=str, default="Raman_dataset/library.csv", help="Path to library CSV"
+        "--library_path", type=str, default="Raman_dataset/classification_library.csv", help="Path to library CSV"
     )
     parser.add_argument(
         "--image_path", type=str, default="HSI_data/1-Plin1_FB.tif", help="Path to HSI image stack"
