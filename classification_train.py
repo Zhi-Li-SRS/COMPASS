@@ -14,39 +14,58 @@ from tqdm import tqdm
 from classification_model import RamanClassifier
 from dataload import create_dataloaders, load_data
 from loss import Metrics, Denoise_Loss
-from denoising_model import RamanNet, RamanDenoise
+from denoising_model import RamanNet
 from utils import *
 from vis_utils import *
 
 import random
 import matplotlib.pyplot as plt
 
-class Denoise_Trainer:
+class Raman_Trainer:
     def __init__(self, args):
         self.args = args
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.Metrics = Metrics()
 
         self.model = self._prepare_model()
-        self.criterion =  Denoise_Loss()
+        self.criterion_denoise =  Denoise_Loss()
+        self.criterion_classify = nn.CrossEntropyLoss() 
         self.optimizer = optim.Adam(self.model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
         self.scheduler = CosineAnnealingLR(self.optimizer, T_max=args.epochs, eta_min=1e-6)
         
-        self.train, self.val, _ = self._prepare_data()
+        self.denoise_train, self.denoise_val, _ = self._prepare_data("denoising")
+        self.classify_train, self.classify_val, self.classify_names = self._prepare_data("classification")
 
 
-        self.best_val_acc = 0
-        self.best_val_loss = float('inf')
-        self.train_losses = []
-        self.val_accuracies = []
-        self.val_accuracies = []
-        self.val_losses = []
+        self.best_val_acc = {
+            "classification" : 0.0
+        }
+        self.best_val_loss = {
+            "classification" : float("inf")
+        }
+        self.train_losses = {
+            "denoising" : [],
+            "classification" : []
+        }
+        self.val_accuracies = {
+            "classification" : []
+        }
+        self.val_accuracies = {
+            "classification" : []
+        }
+        self.val_losses = {
+            "classification" : []
+        }
         self.patience = 0
         self.early_stop = False
+    
+        self.vis_dir = os.path.join(args.checkpoint_dir, "train_figures")
+        os.makedirs(self.vis_dir, exist_ok=True)
 
 
     def _prepare_model(self):
-        model = RamanDenoise(
+        denoise_model = RamanClassifier(
             input_channels=self.args.input_channels,
             base_channels=self.args.base_channels,
         )
@@ -54,12 +73,19 @@ class Denoise_Trainer:
 
         return model
     
-    def _prepare_data(self) -> Tuple[DataLoader, DataLoader, list]:
-        return create_dataloaders(
-                train_path=self.args.train_path,
-                val_path=self.args.val_path,
+    def _prepare_data(self,task) -> Tuple[DataLoader, DataLoader, list]:
+        if task =="denoising":
+            return create_dataloaders(
+                train_path=self.args.denoise_train_data_path,
+                val_path=self.args.denoise_val_data_path,
                 batch_size=self.args.batch_size,
-        )
+            )
+        elif task=="classification":
+            return create_dataloaders(
+                train_path=self.args.classify_train_data_path,
+                val_path=self.args.classify_val_data_path,
+                batch_size=self.args.batch_size,
+            )
     
     def _save_checkpoint(self, epoch, is_best=True):
         checkpoint = {
@@ -122,29 +148,49 @@ class Denoise_Trainer:
         
     def train_epoch(self):
         self.model.train()
-        total_loss = 0.0
-        progress_bar = tqdm(self.train, desc="Denoising - Training")
-        for batch_idx, (data, target) in enumerate(progress_bar):
-            data, target = data.to(self.device), target.to(self.device)
 
+        total_loss = 0.0
+        denoise_progress_bar = tqdm(self.denoise_train, desc="Denoising - Training")
+        for batch_idx, (data, target) in enumerate(denoise_progress_bar):
+            data, target = data.to(self.device), target.to(self.device)
             # Add channel dimension if needed
             if len(data.shape) == 2:
                 data = data.unsqueeze(1)
 
-            output = self.model(data)
-            loss= self.criterion(output, target)
-            loss.backward()
+            output_denoised, _ = self.model(data)
+            loss_denoise = self.criterion_denoise(output_denoised, target)
+            loss_denoise.backward()
             self.optimizer.step()
 
-            total_loss += loss.item()
-            progress_bar.set_postfix({"Denoising - avg_loss": f"{total_loss/(batch_idx+1):.4f}"})
+            total_loss += loss_denoise.item()
+            denoise_progress_bar.set_postfix({"Denoising - avg_loss": f"{total_loss/(batch_idx+1):.4f}"})
+        denoise_loss = total_loss / len(self.denoise_train)
 
-        return total_loss / len(self.train)
+
+        total_loss = 0.0
+        classify_progress_bar = tqdm(self.classify_train, desc="Classification - Training")
+        for batch_idx, (data, target) in enumerate(classify_progress_bar):
+            data, target = data.to(self.device), target.to(self.device)   
+            # Add channel dimension if needed
+            if len(data.shape) == 2:
+                data = data.unsqueeze(1)
+
+            _, output_classify = self.model(data)
+            loss_classify = self.criterion_classify(output_classify, target)
+            loss_classify.backward()
+            self.optimizer.step()
+
+            total_loss += loss_classify.item()
+            classify_progress_bar.set_postfix({"Classification - avg_loss": f"{total_loss/(batch_idx+1):.4f}"})
+        classify_loss = total_loss / len(self.classify_train)  
+
+        return denoise_loss, classify_loss
 
     def validate(self):
         self.model.eval()
 
-        data_iterator = iter(self.val)  # Create an iterator over the dataloader
+    
+        data_iterator = iter(self.denoise_val)  # Create an iterator over the dataloader
         data, target = next(data_iterator)  # Fetch one batch
 
         data, target = data.to(self.device), target.to(self.device)
@@ -156,20 +202,6 @@ class Denoise_Trainer:
 
         with torch.no_grad():
             denoised_data_samples = self.model(data_samples).cpu().numpy()
-            for data, target in tqdm(self.val, desc="Classification - Validaiton"):
-                data, target = data.to(self.device), target.to(self.device)
-                if len(data.shape) == 2:
-                    data = data.unsqueeze(1)
-
-                output = self.model(data)
-                loss= self.criterion(output, target)
-                val_loss += loss.item()
-
-                pred = output_classify.argmax(dim=1, keepdim=True)
-                correct += pred.eq(target.view_as(pred)).sum().item()
-                total += target.size(0)
-        classify_accuracy = 100.0 * correct / total
-        val_classify_loss = val_loss / len(self.classify_val)
 
         plt.figure(figsize=(10,6))
         for i in range(10):
@@ -189,7 +221,7 @@ class Denoise_Trainer:
         correct = 0
         total = 0
         val_loss = 0.0
-
+        
         with torch.no_grad():
             for data, target in tqdm(self.classify_val, desc="Classification - Validaiton"):
                 data, target = data.to(self.device), target.to(self.device)

@@ -11,7 +11,7 @@ def correlation_loss(x, y):
     """Calculate correlation loss between two tensors"""
     if x.dim() == 2:
         x = x.unsqueeze(1)
-    
+
     if y.dim() == 2:
         y = y.unsqueeze(1)
     x_mean = torch.mean(x, dim=1, keepdim=True)
@@ -19,16 +19,17 @@ def correlation_loss(x, y):
     eps = 1e-8
     x_std = torch.std(x, dim=1, keepdim=True, unbiased=False) + eps
     y_std = torch.std(y, dim=1, keepdim=True, unbiased=False) + eps
-    
+
     correlation = torch.mean((x - x_mean) * (y - y_mean) / (x_std * y_std))
-    
+
     return 1 - correlation
 
 
-def cos_sim_loss(x, y):
-    """Cosine Similarity loss between two tensors"""
-    cosine_loss = nn.CosineSimilarity(dim=1)
-    return 1 - cosine_loss(x, y).mean()
+# def cos_sim_loss(x, y):
+#     """Cosine Similarity loss between two tensors"""
+#     cosine_loss = nn.CosineSimilarity(dim=1)
+#     return 1 - cosine_loss(x, y).mean()
+
 
 def msle_loss(x, y):
     """Mean Squared Logarithmic Error loss between two tensors"""
@@ -36,20 +37,22 @@ def msle_loss(x, y):
     y_log = torch.log1p(y)
     return f.mse_loss(x_log, y_log)
 
+
 class Denoise_Loss(nn.Module):
     """Custom scale-invariant loss function for denoising
     
     Args:
-        sim_weight (float): Weight for cosine similarity loss. 
+        corr_weight (float): Weight for cosine similarity loss.
     """
-    def __init__ (self, sim_weight = 0.5):
+
+    def __init__(self, corr_weight=0.5):
         super().__init__()
-        self.sim_weight = sim_weight
+        self.corr_weight = corr_weight
 
     def forward(self, pred, target):
-        cs = self.sim_weight * cos_sim_loss(pred, target)
-        msle = (1 - self.sim_weight) * msle_loss(pred, target)
-        return cs + msle
+        cc = self.corr_weight * correlation_loss(pred, target)
+        msle = (1 - self.corr_weight) * msle_loss(pred, target)
+        return cc + msle
 
 
 # def denoise_loss(x, y, p=0.5):

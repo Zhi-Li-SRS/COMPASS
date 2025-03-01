@@ -40,38 +40,38 @@ def augment_data(spectrum, wavenumbers, background, n_augment=100, noise_level=0
     augmented_spectra = []
     original_max = np.max(spectrum)  # Get original spectrum's max value
 
-    bg_mult = np.sort(np.maximum(np.random.normal(bg_level, 2 * noise_level, n_augment), 2 * noise_level))
-    # background = np.outer(bg_mult, background)
-    noise_mult = np.sort(np.maximum(np.abs(skewnorm.rvs(-4, loc=noise_level, scale =0.01, size=n_augment)), 0.5 * noise_level))
+    # Introduce randomness to noise and baseline
+    bg_mult = np.sort(np.maximum(np.random.normal(loc=bg_level, scale=2 * noise_level, size=n_augment), 2 * noise_level))
+    noise_mult = np.sort(np.maximum(np.abs(skewnorm.rvs(a=-4, loc=noise_level, scale=0.1 * noise_level, size=n_augment)), 0.5 * noise_level))
 
-    # noise = np.random.normal(0, noise_mult * original_max, len(spectrum))
 
     for i in range(n_augment):
+        # Add noise
         noise = np.random.normal(0, noise_mult[i] * original_max, len(spectrum))
         noisy_spectrum = spectrum + noise
-        # noisy_spectrum = np.maximum(noisy_spectrum, 0)
 
+        # Shift wavenumbers
         shift = np.random.uniform(-max_shift / 2, max_shift / 2)  # Reduced shift range
         shifted_wavenumbers = wavenumbers + shift
-
         interp_func = interp1d(
             shifted_wavenumbers, noisy_spectrum, kind="cubic", bounds_error=False, fill_value=0
         )
         aug_spectrum = interp_func(wavenumbers)
 
-        background_2 = bg_mult[i] * background
-
-
-        # aug_spectrum = np.maximum(aug_spectrum, 0)
+        # Normalize spectra
         aug_spectrum = aug_spectrum + 1e-6
         aug_spectrum = aug_spectrum / np.max(aug_spectrum)
-        aug_spectrum = aug_spectrum + background_2
+
+        # Add baseline curve
+        baseline = bg_mult[i] * background
+        aug_spectrum = aug_spectrum + baseline
+
         augmented_spectra.append(aug_spectrum)
 
     return np.array(augmented_spectra)
 
 
-def create_augmented_dataset(input_file, output_file, background_file, n_augment=100):
+def create_augmented_dataset(input_file, output_file, background_file, n_augment=500):
     """
     Create augmented dataset from original spectra.
     """
@@ -109,13 +109,13 @@ if __name__ == "__main__":
 
     classification_df_augmented = create_augmented_dataset(
         input_file=classification_path + "library.csv",
-        output_file=classification_path + "val_data.csv",
+        output_file=classification_path + "train_data.csv",
         background_file="background/water_HSI_76.csv"
     )
 
     denoising_df_augmented = create_augmented_dataset(
         input_file=denoising_path + "library.csv",
-        output_file=denoising_path + "val_data.csv",
+        output_file=denoising_path + "train_data.csv",
         background_file="background/water_HSI_76.csv"
     )
     # lipid = df_augmented.iloc[105:131, 1:].T
