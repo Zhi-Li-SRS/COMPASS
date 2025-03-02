@@ -28,10 +28,11 @@ class HSIPredictor:
             library_path: Path to library CSV with reference spectra
             target_subtypes: List of subtypes to predict
         """
-        self.device = torch.device("cpu")
+        set_seed(42)
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.target = target
         self.prob_thresh = 0.9
-        self.bg_thresh = 0.7
+        self.bg_thresh = 0.9
         self.colors = {
             "d7-glucose": "#FF0000",  # Red
             "d2-fructose": "#00FF00",  # Green
@@ -43,6 +44,8 @@ class HSIPredictor:
         # Load pretrained model
         self.model, self.class_names = self._load_model(model_path)
 
+        if isinstance(self.class_names, np.ndarray):
+            self.class_names = self.class_names.tolist()
         # Get Background class index
         self.bg_idx = self.class_names.index("background") if "background" in self.class_names else None
         if self.bg_idx is None:
@@ -57,6 +60,10 @@ class HSIPredictor:
         self.target_indices = (
             self._get_target_indices()
         )  # {'d2-fructose': 0, 'd-tyrosine': 1, 'd-methionine': 2, 'd-leucine': 3}
+        
+        self.valid_class_indices = list(self.target_indices.values())
+        if self.bg_idx is not None:
+            self.valid_class_indices.append(self.bg_idx)
 
         self.original_spectra = None
         self.img_wavenumbers = None
@@ -66,7 +73,7 @@ class HSIPredictor:
         ckpt = torch.load(model_path, map_location=self.device)
 
         class_names = ckpt.get("class_names", [])
-        if not class_names:
+        if len(class_names) == 0:
             raise ValueError("Class names not found in checkpoint")
 
         model = LipidNet(num_classes=len(class_names))
@@ -168,7 +175,14 @@ class HSIPredictor:
                 batch_tensor = torch.FloatTensor(processed_batch).to(self.device)
                 batch_tensor = batch_tensor.unsqueeze(1)
                 output = self.model(batch_tensor)  # (batch_size, num_classes)
-                probs = torch.softmax(output, dim=1)
+                
+                # Only consider the target and background
+                restricted_output = output[:, self.valid_class_indices]
+                restricted_probs = torch.softmax(restricted_output, dim=1)
+                
+                probs = torch.zeros_like(output)
+                for idx, valid_idx in enumerate(self.valid_class_indices):
+                    probs[:, valid_idx] =  restricted_probs[:, idx]
 
                 # Save background probabilities if available
                 if self.bg_idx is not None:
@@ -340,18 +354,18 @@ class HSIPredictor:
 def main():
     parser = argparse.ArgumentParser(description="HSI Prediction")
     parser.add_argument(
-        "--model_path", type=str, default="checkpoints_5sub/best_model.pth", help="Path to pretrained model"
+        "--model_path", type=str, default="checkpoints_with_bg/best_model.pth", help="Path to pretrained model"
     )
     parser.add_argument(
         "--library_path", type=str, default="Raman_dataset/library.csv", help="Path to library CSV"
     )
     parser.add_argument(
-        "--image_path", type=str, default="HSI_data/1-Plin1_FB.tif", help="Path to HSI image stack"
+        "--image_path", type=str, default="HSI_data/1-Wt_FB.tif", help="Path to HSI image stack"
     )
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="predicted_results/hsi_plin1_predict_5sub",
+        default="predicted_results/hsi_wt_with_bg",
         help="Directory to save results",
     )
     parser.add_argument(

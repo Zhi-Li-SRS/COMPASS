@@ -44,7 +44,7 @@ class FineTuner:
         self.patience = 0
 
         # Create output directory
-        os.makedirs(args.output_dir, exist_ok=True)
+        os.makedirs(args.checkpoint_dir, exist_ok=True)
 
     def _load_pretrained_model(self):
         """Load the pretrained LipidNet model and modify the output layer for fine-tuning."""
@@ -60,7 +60,7 @@ class FineTuner:
         new_num_classes = self.args.original_num_classes + 1  # Add background class
 
         in_features = model.classifier[0].in_features
-        hidden_features = model.classifier[2].in_features
+        hidden_features = model.classifier[0].out_features
         model.classifier = nn.Sequential(
             nn.Linear(in_features, hidden_features),
             nn.ReLU(True),
@@ -176,7 +176,7 @@ class FineTuner:
                 self.best_val_acc = val_accuracy
 
             if is_best or epoch % self.args.save_freq == 0:
-                self._save_checkpoint(epoch, is_best)
+                self.save_checkpoint(epoch, is_best)
 
             # Early stopping
             if epoch > self.args.warmup_epochs:
@@ -223,8 +223,8 @@ def main():
     # Training hyperparameters
     parser.add_argument("--batch_size", type=int, default=64, help="Batch size")
     parser.add_argument("--epochs", type=int, default=100, help="Number of epochs for fine-tuning")
-    parser.add_argument("--lr", type=float, default=1e-6, help="Learning rate (lower than initial training)")
-    parser.add_argument("--weight_decay", type=float, default=1e-7, help="Weight decay")
+    parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate (lower than initial training)")
+    parser.add_argument("--weight_decay", type=float, default=1e-5, help="Weight decay")
     parser.add_argument("--save_freq", type=int, default=50, help="Save frequency (epochs)")
 
     # Early stopping
@@ -236,7 +236,7 @@ def main():
 
     args = parser.parse_args()
     fine_tuner = FineTuner(args)
-    fine_tuner.fine_tune()
+    fine_tuner.finetune()
 
 
 if __name__ == "__main__":
