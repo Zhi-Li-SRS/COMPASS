@@ -272,7 +272,7 @@ def main():
     # Model parameters
     parser.add_argument("--input_channels", type=int, default=1, help="Number of input channels")
     parser.add_argument("--base_channels", type=int, default=8, help="Number of base channels in the model")
-    parser.add_argument("--num_classes", type=int, default=5, help="Number of classes in the dataset")
+    parser.add_argument("--num_classes", type=int, default=18, help="Number of classes in the dataset")
 
     # Training parameters
     parser.add_argument("--batch_size", type=int, default=64, help="Training batch size")

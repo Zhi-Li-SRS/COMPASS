@@ -73,7 +73,7 @@ class LipidNet(nn.Module):
     LipidNet model for lipid classification.
     """
 
-    def __init__(self, input_channels=1, base_channels=8, num_classes=5):
+    def __init__(self, input_channels=1, base_channels=8, num_classes=18):
         super().__init__()
         self.in_channels = base_channels
 
