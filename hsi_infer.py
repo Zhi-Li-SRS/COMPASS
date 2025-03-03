@@ -46,18 +46,18 @@ class HSIPredictor:
 
         self.bg_thresh = 0.9
         self.colors = {
-            "d7-glucose": "#9370DB",  # Medium purple
+            "d7-glucose": "#FF00FF",  # Magenta
             "d2-fructose": "#FF3300",  # Bright red-orange
-            "d-tyrosine": "#FF69B4",  # Hot pink
+            "d-tyrosine": "#DAA520",  # Goldenrod
             "d-methionine": "#0066FF",  # Bright royal blue
             "d-leucine": "#33CC00",  # Bright green
             "background": "#808080",  # Gray
         }
 
         self.color_alpha = {
-            "d7-glucose": 0.6,
+            "d7-glucose": 0.5,
             "d2-fructose": 1.0,
-            "d-tyrosine": 0.6,
+            "d-tyrosine": 0.8,
             "d-methionine": 1.0,
             "d-leucine": 1.0,
             "background": 1.0,
@@ -429,13 +429,10 @@ def main():
         "--library_path", type=str, default="Raman_dataset/library.csv", help="Path to library CSV"
     )
     parser.add_argument(
-        "--image_path", type=str, default="HSI_data/1-Plin1_FB.tif", help="Path to HSI image stack"
+        "--image_path", type=str, default="HSI_data/1-Wt_FB.tif", help="Path to HSI image stack"
     )
     parser.add_argument(
-        "--output_dir",
-        type=str,
-        default="predicted_results/hsi_plin1_with_bg",
-        help="Directory to save results",
+        "--output_dir", type=str, default="predicted_results/hsi_wt_with_bg", help="Directory to save results"
     )
     parser.add_argument(
         "--target",
