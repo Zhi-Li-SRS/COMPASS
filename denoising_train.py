@@ -14,7 +14,7 @@ from tqdm import tqdm
 from classification_model import RamanClassifier
 from dataload import create_dataloaders, load_data
 from loss import Metrics, Denoise_Loss
-from denoising_model import RamanNet, RamanDenoise
+from denoising_model import RamanDenoise
 from utils import *
 from vis_utils import *
 
@@ -32,14 +32,10 @@ class Denoise_Trainer:
         self.optimizer = optim.Adam(self.model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
         self.scheduler = CosineAnnealingLR(self.optimizer, T_max=args.epochs, eta_min=1e-6)
         
-        self.train, self.val, _ = self._prepare_data()
+        self.train_loader, self.val_loader, _ = self._prepare_data()
 
-
-        self.best_val_acc = 0
         self.best_val_loss = float('inf')
         self.train_losses = []
-        self.val_accuracies = []
-        self.val_accuracies = []
         self.val_losses = []
         self.patience = 0
         self.early_stop = False
@@ -67,10 +63,8 @@ class Denoise_Trainer:
             "model_state_dict": self.model.state_dict(),
             "optimizer_state_dict": self.optimizer.state_dict(),
             "scheduler_state_dict": self.scheduler.state_dict(),
-            "best_val_acc": self.best_val_acc,
             "best_val_loss": self.best_val_loss,
             "train_losses": self.train_losses,
-            "val_accuracies": self.val_accuracies,
             "val_losses": self.val_losses,
         }
 
@@ -108,22 +102,19 @@ class Denoise_Trainer:
 
         self.train_losses = checkpoint["train_losses"]
         self.val_losses = checkpoint["val_losses"]
-        self.val_accuracies = checkpoint["val_accuracies"]
 
-        self.best_val_acc = checkpoint["best_val_acc"]
         self.best_val_loss = checkpoint["best_val_loss"]
 
         start_epoch = checkpoint["epoch"] + 1
 
         print(f"Restored checkpoint from epoch {checkpoint['epoch']}")
-        print(f"Best validation accuracy: {self.best_val_acc:.4f}%")
 
         return start_epoch
         
     def train_epoch(self):
         self.model.train()
         total_loss = 0.0
-        progress_bar = tqdm(self.train, desc="Denoising - Training")
+        progress_bar = tqdm(self.train_loader, desc="Denoising - Training")
         for batch_idx, (data, target) in enumerate(progress_bar):
             data, target = data.to(self.device), target.to(self.device)
 
@@ -131,7 +122,9 @@ class Denoise_Trainer:
             if len(data.shape) == 2:
                 data = data.unsqueeze(1)
 
+            self.optimizer.zero_grad()
             output = self.model(data)
+
             loss= self.criterion(output, target)
             loss.backward()
             self.optimizer.step()
@@ -139,12 +132,13 @@ class Denoise_Trainer:
             total_loss += loss.item()
             progress_bar.set_postfix({"Denoising - avg_loss": f"{total_loss/(batch_idx+1):.4f}"})
 
-        return total_loss / len(self.train)
+        return total_loss / len(self.train_loader)
 
     def validate(self):
+        val_loss = 0.0
         self.model.eval()
 
-        data_iterator = iter(self.val)  # Create an iterator over the dataloader
+        data_iterator = iter(self.val_loader)  # Create an iterator over the dataloader
         data, target = next(data_iterator)  # Fetch one batch
 
         data, target = data.to(self.device), target.to(self.device)
@@ -156,7 +150,7 @@ class Denoise_Trainer:
 
         with torch.no_grad():
             denoised_data_samples = self.model(data_samples).cpu().numpy()
-            for data, target in tqdm(self.val, desc="Classification - Validaiton"):
+            for data, target in tqdm(self.val_loader, desc="Denoising - Validation"):
                 data, target = data.to(self.device), target.to(self.device)
                 if len(data.shape) == 2:
                     data = data.unsqueeze(1)
@@ -165,17 +159,14 @@ class Denoise_Trainer:
                 loss= self.criterion(output, target)
                 val_loss += loss.item()
 
-                pred = output_classify.argmax(dim=1, keepdim=True)
-                correct += pred.eq(target.view_as(pred)).sum().item()
-                total += target.size(0)
-        classify_accuracy = 100.0 * correct / total
-        val_classify_loss = val_loss / len(self.classify_val)
+        avg_val_loss = val_loss / len(self.val_loader)
 
+        # Visualize Denoising Results
         plt.figure(figsize=(10,6))
         for i in range(10):
             plt.subplot(2, 10, i + 1)
             plt.plot(data_samples[i].cpu().numpy(), label="Original")
-            plt.plot(target_samples[i].cpu().numpy(), label="Noisy", linestyle="dahsed")
+            plt.plot(target_samples[i].cpu().numpy(), label="Noisy", linestyle="dashed")
             plt.legend()
             plt.title(f"Sample {i+1}")
 
@@ -185,125 +176,38 @@ class Denoise_Trainer:
         plt.tight_layout()
         plt.show()
 
+        return avg_val_loss
 
-        correct = 0
-        total = 0
-        val_loss = 0.0
-
-        with torch.no_grad():
-            for data, target in tqdm(self.classify_val, desc="Classification - Validaiton"):
-                data, target = data.to(self.device), target.to(self.device)
-                if len(data.shape) == 2:
-                    data = data.unsqueeze(1)
-
-                _, output_classify = self.model(data)
-                loss_classify = self.criterion_classify(output_classify, target)
-                val_loss += loss_classify.item()
-
-                pred = output_classify.argmax(dim=1, keepdim=True)
-                correct += pred.eq(target.view_as(pred)).sum().item()
-                total += target.size(0)
-        classify_accuracy = 100.0 * correct / total
-        val_classify_loss = val_loss / len(self.classify_val)
-
-        return classify_accuracy, val_classify_loss
-    
     def train(self):
         if self.args.resume_checkpoint:
             start_epoch = self.load_checkpoint(self.args.resume_checkpoint)
         else:
             start_epoch = 1
-            print("Staring fresh training")
-        print(f"Train from epoch {start_epoch} to {self.args.epochs}")
+            print("Starting fresh training")
+        print(f"Training from epoch {start_epoch} to {self.args.epochs}")
         for epoch in range(1, self.args.epochs + 1):
-            print(f"\nEpoch {epoch}/ {self.args.epochs}")
+            print(f"\nEpoch {epoch}/{self.args.epochs}")
 
-            denoise_loss, classify_loss = self.train_epoch()
-            classify_accuracy, val_classify_loss = self.validate()
+            train_loss = self.train_epoch()
+            self.train_losses.append(train_loss)
 
-            self.train_losses["denoising"].append(denoise_loss)
-            print(f"Denoising - Training Loss: {denoise_loss:.4f}")
+            val_loss = self.validate()
+            self.val_losses.append(val_loss)
 
-            
-            self.train_losses["classification"].append(classify_loss)
-            print(f"Classification - Training Loss: {classify_loss:.4f}")
-            self.val_losses["classification"].append(val_classify_loss)
-            print(f"Classification - Validation Loss: {val_classify_loss:.4f}")
-            self.val_accuracies["classification"].append(classify_accuracy)
-            print(f"Classification - Validation Accuracy: {classify_accuracy:.2f}")              
+            print(f"Training Loss: {train_loss:.4f}")
+            print(f"Validation Loss: {val_loss:.4f}")
 
             self.scheduler.step()
 
-            # Save checkpoints 
-            is_best = classify_accuracy > self.best_val_acc["classification"]
-            if is_best:
-                self.best_val_acc["classification"] = classify_accuracy
+            # Save checkpoints
+            if epoch % self.args.save_freq == 0:
+                self._save_checkpoint(epoch)
 
-
-            if epoch % self.args.save_freq == 0 or is_best:
-                self._save_checkpoint(epoch, is_best)
             if epoch > self.args.warmup_epochs:
-                if self._check_early_stop(val_classify_loss):
+                if self._check_early_stop(val_loss):
                     print(f"Early stopping at epoch {epoch}")
                     break
-
-        print(f"Training completed. Best classification validation accuracy: {self.best_val_acc["classification"]:.2f}%") 
-
-        self._create_train_figures()
-
-    def _create_train_figures(self):
-        """Create training and evaluation figures"""      
-        self.model.eval()
-        y_true = []
-        y_pred = []
-        y_pred_proba = []
-
-
-        with torch.no_grad():
-            for data, target in tqdm(self.classify_val, desc="Classification - Final Evaluation"):
-                data, target = data.to(self.device), target.to(self.device)
-                if len(data.shape) == 2:
-                    data = data.unsqueeze(1)
-
-                output = self.model(data)
-                probs = torch.softmax(output, dim=1)   
-
-                y_true.extend(target.cpu().numpy())
-                y_pred.extend(output.argmax(dim=1, keepdim=True).cpu().numpy()) 
-                y_pred_proba(probs.cpu().numpy())
-
-        y_true = np.array(y_true)
-        y_pred = np.array(y_pred)
-        y_pred_proba = np.array(y_pred_proba)
-
-        precision, recall, f1 = self.metrics.compute_precision_recall_f1(y_true, y_pred)
-
-        class_precision, class_recall, class_f1, _ = precision_recall_fscore_support(
-            y_true, y_pred, average = None
-        )       
-
-        class_metrics = {"precision": class_precision, "recall": class_recall, "f1": class_f1}
-
-        plot_train_history(
-            save_dir=self.vis_dir,
-            train_losses=self.train_losses["classification"],
-            val_losses=self.val_losses["classification"],
-            val_accuracies=self.val_accuracies["classification"],
-            y_true = y_true,
-            y_pred = y_pred,
-            y_pred_proba = y_pred_proba,
-            class_names = self.classify_names,
-            precision = precision,
-            recall = recall,
-            f1 = f1,
-            class_metrics =class_metrics
-        )
-
-        print("\nFinal Evaluation Metrics:")
-        print(f"Precision: {precision:.4f}")
-        print(f"Recall: {recall:.4f}")
-        print(f"F1 Score: {f1:.4f}")
-        print(f"\nVisualization and metrics saved to: {self.vis_dir}")
+        print(f"Training completed.")
 
 
 
@@ -341,16 +245,10 @@ def main():
 
     # Data parameters
     parser.add_argument(
-        "--denoise_train_data_path", type=str, default="dataset/denoise_train_data.csv", help="Path to the denoising dataset"
+        "--train_path", type=str, default="dataset/denoise_train_data.csv", help="Path to the denoising dataset"
     )
     parser.add_argument(
-        "--denoise_val_data_path", type=str, default="dataset/denoising_val_data.csv", help="Path to the denoising dataset"
-    )
-    parser.add_argument(
-        "--classify_train_data_path", type=str, default="dataset/classify_train_data.csv", help="Path to the classification dataset"
-    )
-    parser.add_argument(
-        "--classify_val_data_path", type=str, default="dataset/classify_val_data.csv", help="Path to the classification dataset"
+        "--val_path", type=str, default="dataset/denoising_val_data.csv", help="Path to the denoising dataset"
     )
 
     parser.add_argument(
@@ -361,5 +259,5 @@ def main():
     args = parser.parse_args()
     os.makedirs(args.checkpoint_dir, exist_ok=True)
 
-    trainer = Raman_Trainer(args)
+    trainer = Denoise_Trainer(args)
     trainer.train()

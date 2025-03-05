@@ -4,10 +4,10 @@ import torch.nn.functional as F
 import matplotlib.pyplot as plt
 
 class RamanClassifier(nn.Module):
-    def __init__(self, model, base_channels=8, num_classes:int=25):
+    def __init__(self, denoiser, base_channels=8, num_classes:int=25):
         super(RamanClassifier, self).__init__()
 
-        self.encoder = model.encoder
+        self.encoder = denoiser.encoder
         self.global_pool = nn.AdaptiveAvgPool1d(1)
 
         # Latent space Classifier

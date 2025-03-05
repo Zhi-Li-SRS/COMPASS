@@ -5,18 +5,42 @@ import pandas as pd
 from scipy.interpolate import interp1d
 from scipy.stats import skewnorm
 
-def normalize(array, max=1, min=0, eps=1e-8):
+def normalize(array, max=1, min=0, eps=1e-8, axis=None):
     """
     Normalize array by minimum and maximum values
     """
     min_val = np.min(array)
     max_val = np.max(array)
+    diff = max_val - min_val
 
-    if np.all(array==0):
-        raise Exception('All values in array are zero.')
+    if axis is None:
+        if np.all(array==0):
+            raise Exception('All values in array are zero.')
+        else:
+            norm = ((array - min_val)/(max_val - min_val + eps))*(max - min) + min
     else:
-        norm = ((array - min_val)/(max_val - min_val + eps))*(max - min) + min
+        norm = array.copy()
+        eps = eps * np.ones_like(array)
+        idx = np.where(diff != 0)[0]
+        norm[idx] = (((array[idx].T - min_val[idx]) / (diff[idx]+eps[idx])) * (max - min) + min).T
+
     return norm
+
+
+# def normalizebyvalue(array, max_val, min_val, max=1, min=0, eps=1e-8, axis=None):
+#     diff = max_val - min_val
+#     if axis is None:
+#         if np.all(diff == 0):
+#             norm = array
+#         else:
+#             norm = ((array - min_val) / (diff+eps)) * (max - min) + min
+#     else:
+#         norm = array.copy()
+#         eps = eps * np.ones_like(array)
+#         idx = np.where(diff != 0)[0]
+#         norm[idx] = (((array[idx].T - min_val[idx]) / (diff[idx]+eps[idx])) * (max - min) + min).T
+#
+#     return norm
 
 
 
@@ -32,13 +56,13 @@ def preprocess_data(input_file, output_file):
     return df_transposed
 
 
-def augment_data(spectrum, wavenumbers, background, n_augment=100, noise_level=0.1, bg_level=0.5, max_shift=15):
+def augment_data(spectrum, wavenumbers, background, n_augment=100, noise_level=0.1, bg_level=0.5, max_shift=15, name="Background"):
     """
     Augment a single spectrum by adding noise and random shifts.
     Ensures all values are positive and within reasonable range for Raman spectra.
     """
     augmented_spectra = []
-    original_max = np.max(spectrum)  # Get original spectrum's max value
+    original_max = 1 #np.max(spectrum)  # Get original spectrum's max value
 
     # Introduce randomness to noise and baseline
     bg_mult = np.sort(np.maximum(np.random.normal(loc=bg_level, scale=2 * noise_level, size=n_augment), 2 * noise_level))
@@ -59,8 +83,9 @@ def augment_data(spectrum, wavenumbers, background, n_augment=100, noise_level=0
         aug_spectrum = interp_func(wavenumbers)
 
         # Normalize spectra
-        aug_spectrum = aug_spectrum + 1e-6
-        aug_spectrum = aug_spectrum / np.max(aug_spectrum)
+        if name != "Background":
+            aug_spectrum = aug_spectrum + 1e-6
+            aug_spectrum = aug_spectrum / np.max(aug_spectrum)
 
         # Add baseline curve
         baseline = bg_mult[i] * background
@@ -71,7 +96,7 @@ def augment_data(spectrum, wavenumbers, background, n_augment=100, noise_level=0
     return np.array(augmented_spectra)
 
 
-def create_augmented_dataset(input_file, output_file, background_file, n_augment=500):
+def create_augmented_dataset(input_file, output_file, background_file, n_augment=100):
     """
     Create augmented dataset from original spectra.
     """
@@ -91,11 +116,19 @@ def create_augmented_dataset(input_file, output_file, background_file, n_augment
 
     for idx, name in enumerate(names):
         spectrum = spectra[idx]
-        aug_spectra = augment_data(spectrum, wavenumbers, background, n_augment=n_augment)
+        aug_spectra = augment_data(spectrum, wavenumbers, background, n_augment=n_augment,name=name)
 
         spectra_df = pd.DataFrame(aug_spectra, columns=wavenumbers)
         spectra_df.insert(0, "name", name)
         augmented_data.append(spectra_df)
+
+    # Add Background Class
+    spectrum = np.zeros_like(spectra[-1])
+    name = "Background"
+    aug_spectra = augment_data(spectrum, wavenumbers, background, n_augment=n_augment, name=name)
+    spectra_df = pd.DataFrame(aug_spectra, columns=wavenumbers)
+    spectra_df.insert(0, "name", name)
+    augmented_data.append(spectra_df)
 
     df_augmented = pd.concat(augmented_data, ignore_index=True)
     df_augmented.to_csv(output_file, index=False)
@@ -109,13 +142,13 @@ if __name__ == "__main__":
 
     classification_df_augmented = create_augmented_dataset(
         input_file=classification_path + "library.csv",
-        output_file=classification_path + "train_data.csv",
+        output_file=classification_path + "val_data.csv",
         background_file="background/water_HSI_76.csv"
     )
 
     denoising_df_augmented = create_augmented_dataset(
         input_file=denoising_path + "library.csv",
-        output_file=denoising_path + "train_data.csv",
+        output_file=denoising_path + "val_data.csv",
         background_file="background/water_HSI_76.csv"
     )
     # lipid = df_augmented.iloc[105:131, 1:].T
