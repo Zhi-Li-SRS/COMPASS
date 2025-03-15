@@ -11,11 +11,11 @@ def correlation_loss(x, y):
     """Calculate correlation loss between two tensors"""
     if x.dim() == 2:
         x = x.unsqueeze(1)
-
     if y.dim() == 2:
         y = y.unsqueeze(1)
-    x_mean = torch.mean(x, dim=1, keepdim=True)
-    y_mean = torch.mean(y, dim=1, keepdim=True)
+
+    x_mean = torch.mean(x.float().flatten(), dim=0, keepdim=True)
+    y_mean = torch.mean(y.float().flatten(), dim=0, keepdim=True)
     eps = 1e-8
     x_std = torch.std(x, dim=1, keepdim=True, unbiased=False) + eps
     y_std = torch.std(y, dim=1, keepdim=True, unbiased=False) + eps
@@ -45,7 +45,7 @@ class Denoise_Loss(nn.Module):
         corr_weight (float): Weight for cosine similarity loss.
     """
 
-    def __init__(self, corr_weight=0.5):
+    def __init__(self, corr_weight=0):
         super().__init__()
         self.corr_weight = corr_weight
 

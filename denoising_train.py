@@ -11,9 +11,8 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from classification_model import RamanClassifier
 from dataload import create_dataloaders, load_data
-from loss import Metrics, Denoise_Loss
+from loss import Metrics, Denoise_Loss, msle_loss
 from denoising_model import RamanDenoise
 from utils import *
 from vis_utils import *
@@ -32,7 +31,7 @@ class Denoise_Trainer:
         self.optimizer = optim.Adam(self.model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
         self.scheduler = CosineAnnealingLR(self.optimizer, T_max=args.epochs, eta_min=1e-6)
         
-        self.train_loader, self.val_loader, _ = self._prepare_data()
+        self.train_loader, self.val_loader, self.class_names = self._prepare_data()
 
         self.best_val_loss = float('inf')
         self.train_losses = []
@@ -54,6 +53,7 @@ class Denoise_Trainer:
         return create_dataloaders(
                 train_path=self.args.train_path,
                 val_path=self.args.val_path,
+                target_path=self.args.target_path,
                 batch_size=self.args.batch_size,
         )
     
@@ -125,7 +125,7 @@ class Denoise_Trainer:
             self.optimizer.zero_grad()
             output = self.model(data)
 
-            loss= self.criterion(output, target)
+            loss = self.criterion(output, target.unsqueeze(1))
             loss.backward()
             self.optimizer.step()
 
@@ -146,34 +146,32 @@ class Denoise_Trainer:
         random_indices = random.sample(range(batch_size), 10)
 
         data_samples = data[random_indices]
-        target_samples = data[random_indices]
+        target_samples = target[random_indices]
 
         with torch.no_grad():
-            denoised_data_samples = self.model(data_samples).cpu().numpy()
+            denoised_data_samples = self.model(data_samples.unsqueeze(1)).cpu().numpy()
             for data, target in tqdm(self.val_loader, desc="Denoising - Validation"):
                 data, target = data.to(self.device), target.to(self.device)
                 if len(data.shape) == 2:
                     data = data.unsqueeze(1)
 
                 output = self.model(data)
-                loss= self.criterion(output, target)
+                loss = self.criterion(output, target.unsqueeze(1))
                 val_loss += loss.item()
 
         avg_val_loss = val_loss / len(self.val_loader)
 
         # Visualize Denoising Results
-        plt.figure(figsize=(10,6))
+        plt.figure(figsize=(50,30))
         for i in range(10):
             plt.subplot(2, 10, i + 1)
-            plt.plot(data_samples[i].cpu().numpy(), label="Original")
-            plt.plot(target_samples[i].cpu().numpy(), label="Noisy", linestyle="dashed")
+            plt.plot(data_samples[i].cpu().numpy(), label="Noisy")
+            plt.plot(target_samples[i].cpu().numpy(), label="Original", linestyle="dashed")
+            plt.plot(denoised_data_samples.squeeze(1)[i], label="Denoised", color="black")
             plt.legend()
             plt.title(f"Sample {i+1}")
 
-            plt.subplot(2, 5, i + 6)
-            plt.plot(denoised_data_samples[i], label="Denoised", color="black")
-            plt.legend()
-        plt.tight_layout()
+
         plt.show()
 
         return avg_val_loss
@@ -209,9 +207,8 @@ class Denoise_Trainer:
                     break
         print(f"Training completed.")
 
-
-
 def main():
+    print("Starting denoising training.")
     parser = argparse.ArgumentParser(description="Train RamanNet model on lipid dataset")
 
     # Model paramaters 
@@ -245,10 +242,13 @@ def main():
 
     # Data parameters
     parser.add_argument(
-        "--train_path", type=str, default="dataset/denoise_train_data.csv", help="Path to the denoising dataset"
+        "--train_path", type=str, default="dataset/denoising_train_data.csv", help="Path to the denoising dataset"
     )
     parser.add_argument(
         "--val_path", type=str, default="dataset/denoising_val_data.csv", help="Path to the denoising dataset"
+    )
+    parser.add_argument(
+        "--target_path", type=str, default="dataset/denoising_target_data.csv", help="Path to the target dataset"
     )
 
     parser.add_argument(
@@ -261,3 +261,6 @@ def main():
 
     trainer = Denoise_Trainer(args)
     trainer.train()
+
+if __name__ == "__main__":
+    main()

@@ -41,25 +41,25 @@ class RamanDenoise(nn.Module):
         # Encoder
         self.encoder = nn.Sequential(
             nn.Conv1d(input_channels, base_channels, kernel_size=3, padding=1),
-            nn.ReLU(True),
+            nn.ReLU(),
             nn.Conv1d(base_channels, base_channels * 2, kernel_size=3, padding=1),
-            nn.ReLU(True),
+            nn.ReLU(),
             nn.Conv1d(base_channels * 2, base_channels * 4, kernel_size=3, padding=1),
-            nn.ReLU(True),
+            nn.ReLU(),
             nn.Conv1d(base_channels * 4, base_channels * 8, kernel_size=3, padding=1),
-            nn.ReLU(True),
+            nn.ReLU(),
         )
 
         # Decoder
         self.decoder = nn.Sequential(
             nn.ConvTranspose1d(base_channels * 8, base_channels * 4, kernel_size=3, padding=1),
-            nn.ReLU(True),
+            nn.ReLU(),
             nn.ConvTranspose1d(base_channels * 4, base_channels * 2, kernel_size=3, padding=1),
-            nn.ReLU(True),
+            nn.ReLU(),
             nn.ConvTranspose1d(base_channels * 2, base_channels, kernel_size=3, padding=1),
-            nn.ReLU(True),
+            nn.ReLU(),
             nn.ConvTranspose1d(base_channels, input_channels, kernel_size=3, padding=1),
-            nn.ReLU(True)
+            nn.ReLU()
         )
 
     # def _make_layer(self, block, out_channels, blocks, stride=1):
