@@ -125,7 +125,7 @@ class Denoise_Trainer:
             self.optimizer.zero_grad()
             output = self.model(data)
 
-            loss = self.criterion(output, target.unsqueeze(1))
+            loss = self.criterion(output, target)
             loss.backward()
             self.optimizer.step()
 
@@ -156,18 +156,18 @@ class Denoise_Trainer:
                     data = data.unsqueeze(1)
 
                 output = self.model(data)
-                loss = self.criterion(output, target.unsqueeze(1))
+                loss = self.criterion(output, target)
                 val_loss += loss.item()
 
         avg_val_loss = val_loss / len(self.val_loader)
 
         # Visualize Denoising Results
-        plt.figure(figsize=(50,30))
-        for i in range(10):
-            plt.subplot(2, 10, i + 1)
+        plt.figure(figsize=(16,4))
+        for i in range(5):
+            plt.subplot(1, 5, i + 1)
             plt.plot(data_samples[i].cpu().numpy(), label="Noisy")
             plt.plot(target_samples[i].cpu().numpy(), label="Original", linestyle="dashed")
-            plt.plot(denoised_data_samples.squeeze(1)[i], label="Denoised", color="black")
+            plt.plot(denoised_data_samples[i], label="Denoised", color="black")
             plt.legend()
             plt.title(f"Sample {i+1}")
 

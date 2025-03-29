@@ -25,10 +25,10 @@ def correlation_loss(x, y):
     return 1 - correlation
 
 
-# def cos_sim_loss(x, y):
-#     """Cosine Similarity loss between two tensors"""
-#     cosine_loss = nn.CosineSimilarity(dim=1)
-#     return 1 - cosine_loss(x, y).mean()
+def cos_sim_loss(x, y):
+    """Cosine Similarity loss between two tensors"""
+    cosine_loss = nn.CosineSimilarity(dim=1)
+    return 1 - cosine_loss(x, y).mean()
 
 
 def msle_loss(x, y):
@@ -45,14 +45,14 @@ class Denoise_Loss(nn.Module):
         corr_weight (float): Weight for cosine similarity loss.
     """
 
-    def __init__(self, corr_weight=0):
+    def __init__(self, sim_weight=0.75):
         super().__init__()
-        self.corr_weight = corr_weight
+        self.sim_weight = sim_weight
 
     def forward(self, pred, target):
-        cc = self.corr_weight * correlation_loss(pred, target)
-        msle = (1 - self.corr_weight) * msle_loss(pred, target)
-        return cc + msle
+        sim = self.sim_weight * cos_sim_loss(pred, target)
+        msle = (1 - self.sim_weight) * msle_loss(pred, target)
+        return sim + msle
 
 
 # def denoise_loss(x, y, p=0.5):
