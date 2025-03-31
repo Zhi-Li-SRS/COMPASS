@@ -36,30 +36,56 @@ import matplotlib.pyplot as plt
 #         return self.relu(out)
     
 class RamanDenoise(nn.Module):
-    def __init__(self, input_channels=1, base_channels=8):
+    def __init__(self, input_channels=1, base_channels=16):
         super(RamanDenoise, self).__init__()
         # Encoder
+        # self.encoder = nn.Sequential(
+        #     nn.Conv1d(input_channels, base_channels, kernel_size=3, padding=1),
+        #     nn.ReLU(),
+        #     nn.Conv1d(base_channels, base_channels * 2, kernel_size=3, padding=1),
+        #     nn.ReLU(),
+        #     nn.Conv1d(base_channels * 2, base_channels * 4, kernel_size=3, padding=1),
+        #     nn.ReLU(),
+        #     nn.Conv1d(base_channels * 4, base_channels * 8, kernel_size=3, padding=1),
+        #     nn.ReLU(),
+        # )
         self.encoder = nn.Sequential(
-            nn.Conv1d(input_channels, base_channels, kernel_size=3, padding=1),
+            nn.Conv1d(input_channels, base_channels, kernel_size=3, padding=1, padding_mode='reflect'),
             nn.ReLU(),
-            nn.Conv1d(base_channels, base_channels * 2, kernel_size=3, padding=1),
+            nn.Conv1d(base_channels, base_channels * 2, kernel_size=3, padding=1, padding_mode='reflect'),
             nn.ReLU(),
-            nn.Conv1d(base_channels * 2, base_channels * 4, kernel_size=3, padding=1),
+            nn.Conv1d(base_channels * 2, base_channels * 4, kernel_size=3, padding=1, padding_mode='reflect'),
             nn.ReLU(),
-            nn.Conv1d(base_channels * 4, base_channels * 8, kernel_size=3, padding=1),
+            nn.AvgPool1d(kernel_size=2),
+            nn.Conv1d(base_channels * 4, base_channels * 8, kernel_size=3, padding=1, padding_mode='reflect'),
             nn.ReLU(),
+            nn.MaxPool1d(kernel_size=2),
+            nn.Conv1d(base_channels * 8, base_channels * 16, kernel_size=3, padding=1, padding_mode='reflect'),
+            nn.ReLU()
         )
 
         # Decoder
+        # self.decoder = nn.Sequential(
+        #     nn.ConvTranspose1d(base_channels * 8, base_channels * 4, kernel_size=3, padding=1),
+        #     nn.ReLU(),
+        #     nn.ConvTranspose1d(base_channels * 4, base_channels * 2, kernel_size=3, padding=1),
+        #     nn.ReLU(),
+        #     nn.ConvTranspose1d(base_channels * 2, base_channels, kernel_size=3, padding=1),
+        #     nn.ReLU(),
+        #     nn.ConvTranspose1d(base_channels, input_channels, kernel_size=3, padding=1),
+        #     nn.ReLU()
+        # )
         self.decoder = nn.Sequential(
-            nn.ConvTranspose1d(base_channels * 8, base_channels * 4, kernel_size=3, padding=1),
+            nn.ConvTranspose1d(base_channels* 16, base_channels * 8, kernel_size=3, padding=1, padding_mode='zeros'),
             nn.ReLU(),
-            nn.ConvTranspose1d(base_channels * 4, base_channels * 2, kernel_size=3, padding=1),
+            nn.ConvTranspose1d(base_channels * 8, base_channels * 4, kernel_size=2, stride=2, ),
             nn.ReLU(),
-            nn.ConvTranspose1d(base_channels * 2, base_channels, kernel_size=3, padding=1),
+            nn.ConvTranspose1d(base_channels * 4, base_channels * 2, kernel_size=2, stride=2, output_padding=1),
             nn.ReLU(),
-            nn.ConvTranspose1d(base_channels, input_channels, kernel_size=3, padding=1),
-            nn.ReLU()
+            nn.ConvTranspose1d(base_channels * 2, base_channels, kernel_size=3, padding=1, padding_mode='zeros'),
+            nn.ReLU(),
+            nn.ConvTranspose1d(base_channels, input_channels, kernel_size=3, padding=1, padding_mode='zeros'),
+            nn.Sigmoid()
         )
 
     # def _make_layer(self, block, out_channels, blocks, stride=1):
@@ -82,7 +108,7 @@ class RamanDenoise(nn.Module):
         # pooled_latent = self.global_pool(latent)  # Shape: (N, latent_dim, 1)
         # classification = self.classifier(pooled_latent).detach()  # Shape: (N, num_classes)
         reconstructed = self.decoder(latent) # Shape: (N, input_channels, L)
-        return reconstructed
+        return reconstructed.squeeze(1)
 
 class RamanClassifier(nn.Module):
     def __init__(self, denoiser, base_channels=8, num_classes:int=25):

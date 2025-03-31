@@ -96,7 +96,7 @@ def augment_data(spectrum, wavenumbers, background, n_augment=100, noise_level=0
     return np.array(augmented_spectra)
 
 
-def create_augmented_dataset(input_file, output_file, background_file, n_augment=100):
+def create_augmented_dataset(input_file, output_file, background_file, n_augment=500):
     """
     Create augmented dataset from original spectra.
     """
@@ -142,13 +142,13 @@ if __name__ == "__main__":
 
     classification_df_augmented = create_augmented_dataset(
         input_file=classification_path + "library.csv",
-        output_file=classification_path + "val_data.csv",
+        output_file=classification_path + "train_data.csv",
         background_file="background/water_HSI_76.csv"
     )
 
     denoising_df_augmented = create_augmented_dataset(
         input_file=denoising_path + "library.csv",
-        output_file=denoising_path + "val_data.csv",
+        output_file=denoising_path + "train_data.csv",
         background_file="background/water_HSI_76.csv"
     )
     # lipid = df_augmented.iloc[105:131, 1:].T

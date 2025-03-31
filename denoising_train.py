@@ -213,7 +213,7 @@ def main():
 
     # Model paramaters 
     parser.add_argument("--input_channels", type=int, default=1, help="Number of input channels")
-    parser.add_argument("--base_channels", type=int, default=8, help="Number of base channels in the model")
+    parser.add_argument("--base_channels", type=int, default=16, help="Number of base channels in the model")
     parser.add_argument("--num_classes", type=int, default=25, help="Number of classes in the dataset")
 
 
