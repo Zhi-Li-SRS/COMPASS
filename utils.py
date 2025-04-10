@@ -4,7 +4,6 @@ from typing import List, Optional, Union
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import pywt
 import rampy as rp
 import torch
 from scipy import sparse

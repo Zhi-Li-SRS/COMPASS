@@ -57,7 +57,7 @@ class FineTuner:
         checkpoint = torch.load(self.args.pretrained_model_path, map_location=self.device)
         model.load_state_dict(checkpoint["model_state_dict"])
 
-        new_num_classes = self.args.original_num_classes + 1  # Add background class
+        new_num_classes = 10 + 1  # Add background class
 
         in_features = model.classifier[0].in_features
         hidden_features = model.classifier[0].out_features
@@ -207,24 +207,24 @@ def main():
     parser.add_argument(
         "--train_data_path",
         type=str,
-        default="Raman_dataset/train_data_with_bg.csv",
+        default="Raman_dataset/ten_molecules_dataset/train_data.csv",
         help="Path to training data with background class",
     )
     parser.add_argument(
         "--val_data_path",
         type=str,
-        default="Raman_dataset/val_data_with_bg.csv",
+        default="Raman_dataset/ten_molecules_dataset/val_data.csv",
         help="Path to validation data with background class",
     )
     parser.add_argument(
-        "--checkpoint_dir", type=str, default="checkpoints_with_bg", help="Directory to save fine-tuned model"
+        "--checkpoint_dir", type=str, default="checkpoints_lipids_and_protein", help="Directory to save fine-tuned model"
     )
 
     # Training hyperparameters
-    parser.add_argument("--batch_size", type=int, default=64, help="Batch size")
-    parser.add_argument("--epochs", type=int, default=100, help="Number of epochs for fine-tuning")
-    parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate (lower than initial training)")
-    parser.add_argument("--weight_decay", type=float, default=1e-5, help="Weight decay")
+    parser.add_argument("--batch_size", type=int, default=512, help="Batch size")
+    parser.add_argument("--epochs", type=int, default=200, help="Number of epochs for fine-tuning")
+    parser.add_argument("--lr", type=float, default=1e-5, help="Learning rate (lower than initial training)")
+    parser.add_argument("--weight_decay", type=float, default=1e-6, help="Weight decay")
     parser.add_argument("--save_freq", type=int, default=50, help="Save frequency (epochs)")
 
     # Early stopping
