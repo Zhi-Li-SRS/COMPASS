@@ -31,15 +31,36 @@ class HSIPredictor:
         set_seed(42)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.target = target
-        self.prob_thresh = 0.9
+
+        # Set thresholds for each target subtype
+        self.prob_thresholds = {
+            "d7-glucose": 0.95,
+            "d2-fructose": 0.6,
+            "d-tyrosine": 0.9,
+            "d-methionine": 0.6,
+            "d-leucine": 0.6,
+        }
+
+        # Set default thresholds
+        self.default_prob_thresh = 0.7
+
         self.bg_thresh = 0.9
         self.colors = {
-            "d7-glucose": "#FF0000",  # Red
-            "d2-fructose": "#00FF00",  # Green
-            "d-tyrosine": "#0000FF",  # Blue
-            "d-methionine": "#FF00FF",  # Magenta
-            "d-leucine": "#FFD700",  # Gold
+            "d7-glucose": "#FF00FF",  # Magenta
+            "d2-fructose": "#FF3300",  # Bright red-orange
+            "d-tyrosine": "#DAA520",  # Goldenrod
+            "d-methionine": "#0066FF",  # Bright royal blue
+            "d-leucine": "#33CC00",  # Bright green
             "background": "#808080",  # Gray
+        }
+
+        self.color_alpha = {
+            "d7-glucose": 0.5,
+            "d2-fructose": 1.0,
+            "d-tyrosine": 0.8,
+            "d-methionine": 1.0,
+            "d-leucine": 1.0,
+            "background": 1.0,
         }
         # Load pretrained model
         self.model, self.class_names = self._load_model(model_path)
@@ -60,7 +81,7 @@ class HSIPredictor:
         self.target_indices = (
             self._get_target_indices()
         )  # {'d2-fructose': 0, 'd-tyrosine': 1, 'd-methionine': 2, 'd-leucine': 3}
-        
+
         self.valid_class_indices = list(self.target_indices.values())
         if self.bg_idx is not None:
             self.valid_class_indices.append(self.bg_idx)
@@ -175,14 +196,14 @@ class HSIPredictor:
                 batch_tensor = torch.FloatTensor(processed_batch).to(self.device)
                 batch_tensor = batch_tensor.unsqueeze(1)
                 output = self.model(batch_tensor)  # (batch_size, num_classes)
-                
+
                 # Only consider the target and background
                 restricted_output = output[:, self.valid_class_indices]
                 restricted_probs = torch.softmax(restricted_output, dim=1)
-                
+
                 probs = torch.zeros_like(output)
                 for idx, valid_idx in enumerate(self.valid_class_indices):
-                    probs[:, valid_idx] =  restricted_probs[:, idx]
+                    probs[:, valid_idx] = restricted_probs[:, idx]
 
                 # Save background probabilities if available
                 if self.bg_idx is not None:
@@ -222,19 +243,36 @@ class HSIPredictor:
         prediction_maps = {}
         merged_map = np.zeros((height, width, 3))
 
+        # Track the pixel counts for each molecule
+        pixel_counts = {}
+
         for name, model_idx in self.target_indices.items():
+            # Get the molecule specific thereshold
+            mol_threshold = self.prob_thresholds.get(name, self.default_prob_thresh)
+            print(f"Using threshold {mol_threshold} for {name}")
+
             prob_map = self.predictions[:, model_idx].reshape(height, width)
-            prob_map = np.where(prob_map > self.prob_thresh, prob_map, 0)
+            prob_map = np.where(prob_map > mol_threshold, prob_map, 0)
             prob_map[combined_mask] = 0
             prediction_maps[name] = prob_map
+
+            # Count pixels above threshold
+            pixel_counts[name] = np.sum(prob_map > 0)
 
             # Save colored map
             color = (
                 np.array(tuple(int(self.colors[name].lstrip("#")[i : i + 2], 16) for i in (0, 2, 4))) / 255.0
             )
+
+            # Apply the molecule-specific alpha value
+            alpha = self.color_alpha[name]
+
             colored_map = np.zeros((height, width, 3))
             for i in range(3):
-                colored_map[:, :, i] = prob_map * color[i]
+                if name != "d7-glucose" and name != "d-tyrosine":
+                    colored_map[:, :, i] = prob_map * color[i] * 1.5
+                else:
+                    colored_map[:, :, i] = prob_map * color[i] * alpha
 
             plt.figure(figsize=(10, 10))
             im = plt.imshow(colored_map)
@@ -249,7 +287,6 @@ class HSIPredictor:
 
             prob_values = self.predictions[:, model_idx].copy()
             prob_values[combined_mask_reshaped] = 0
-            target_mask = prob_values > self.prob_thresh
 
         # Save merged image
         merged_map = np.clip(merged_map, 0, 1)
@@ -265,9 +302,10 @@ class HSIPredictor:
         for name, model_idx in self.target_indices.items():
             prob_values = self.predictions[:, model_idx].copy()
             prob_values[combined_mask_reshaped] = 0
-            mask = prob_values > 0.9
+            mol_threshold = self.prob_thresholds.get(name, self.default_prob_thresh)
+            mask = prob_values > mol_threshold
             print(f"\n{name}:")
-            print(f"Pixels above 0.9 probability: {np.sum(mask)}")
+            print(f"Pixels above {mol_threshold} probability: {np.sum(mask)}")
 
             if np.any(mask):
                 selected_spec = self.original_spectra[mask]
@@ -290,9 +328,37 @@ class HSIPredictor:
         df.to_csv(csv_path, index=False)
         print(f"Saved spectra to {csv_path}")
 
+        # Create color legend image
+        self._create_color_legend(output_dir, pixel_counts)
+        print("All visualizations saved!")
+
         # # Plot spectral comparisons with matching colors
         # self._plot_spectral_comparisons(spectra_by_type, output_dir, use_csv=False)
         # print("All visualizations saved!")
+
+    def _create_color_legend(self, output_dir: str, pixel_counts: Dict[str, int]):
+        """Create a color legend image showing molecule colors and pixel counts"""
+        plt.figure(figsize=(10, 6))
+        plt.style.use("seaborn-v0_8-deep")
+
+        y_positions = np.arange(len(self.target))
+        colors = [self.colors[name] for name in self.target]
+
+        plt.barh(y_positions, [1] * len(self.target), color=colors, height=0.5)
+
+        # Add labels with pixel counts
+        labels = [f"{name} ({pixel_counts.get(name, 0)} pixels)" for name in self.target]
+        plt.yticks(y_positions, labels)
+
+        plt.title("Molecule Color Legend")
+        plt.xlim(0, 1.5)
+        plt.axis("off")
+        for i, name in enumerate(self.target):
+            plt.text(1.1, i, self.colors[name], va="center")
+
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_dir, "color_legend.png"), dpi=300, bbox_inches="tight")
+        plt.close()
 
     def _plot_spectral_comparisons(
         self, spectra_by_type: Dict[str, List[np.ndarray]], output_dir: str, use_csv=False
@@ -354,7 +420,10 @@ class HSIPredictor:
 def main():
     parser = argparse.ArgumentParser(description="HSI Prediction")
     parser.add_argument(
-        "--model_path", type=str, default="checkpoints_with_bg/best_model.pth", help="Path to pretrained model"
+        "--model_path",
+        type=str,
+        default="checkpoints_with_bg/best_model.pth",
+        help="Path to pretrained model",
     )
     parser.add_argument(
         "--library_path", type=str, default="Raman_dataset/library.csv", help="Path to library CSV"
@@ -363,10 +432,7 @@ def main():
         "--image_path", type=str, default="HSI_data/1-Wt_FB.tif", help="Path to HSI image stack"
     )
     parser.add_argument(
-        "--output_dir",
-        type=str,
-        default="predicted_results/hsi_wt_with_bg",
-        help="Directory to save results",
+        "--output_dir", type=str, default="predicted_results/hsi_wt_with_bg", help="Directory to save results"
     )
     parser.add_argument(
         "--target",
