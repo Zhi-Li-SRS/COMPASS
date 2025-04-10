@@ -210,8 +210,8 @@ if __name__ == "__main__":
     
     # --- Create Augmented Dataset ---
     # create_augmented_dataset(
-    #     "Raman_dataset/ten_molecules_train/train_reference.csv",
-    #     "Raman_dataset/ten_molecules_train/val_data.csv",
+    #     "Raman_dataset/molecules_9/train_reference.csv",
+    #     "Raman_dataset/molecules_9/val_data.csv",
     #     "background/CD_HSI_76.csv",
     #     n_augment=200
     # )
@@ -233,13 +233,13 @@ if __name__ == "__main__":
     # )
     # --- End Extract background spectra ---
     
-    # --- Create Combined Dataset ---
+    #// --- Create Combined Dataset ---
     create_combined_dataset(
-        original_csv="Raman_dataset/ten_molecules_train/val_data.csv",
+        original_csv="Raman_dataset/molecules_9/val_data.csv",
         bg_csv="Raman_dataset/raw/val_background_spectra.csv",
-        output_csv="Raman_dataset/ten_molecules_train/val_data_with_bg.csv",
+        output_csv="Raman_dataset/molecules_9/val_data.csv",
     )
-    # --- End Create Combined Dataset ---   
+    #// --- End Create Combined Dataset ---   
     
 
    

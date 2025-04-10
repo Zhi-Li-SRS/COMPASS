@@ -57,7 +57,7 @@ class FineTuner:
         checkpoint = torch.load(self.args.pretrained_model_path, map_location=self.device)
         model.load_state_dict(checkpoint["model_state_dict"])
 
-        new_num_classes = 10 + 1  # Add background class
+        new_num_classes = 9 + 1  # Add background class
 
         in_features = model.classifier[0].in_features
         hidden_features = model.classifier[0].out_features
@@ -201,19 +201,19 @@ def main():
     parser.add_argument(
         "--pretrained_model_path",
         type=str,
-        default="checkpoints_18sub/best_model.pth",
+        default="checkpoints_pretrain/best_model.pth",
         help="Path to pretrained model",
     )
     parser.add_argument(
         "--train_data_path",
         type=str,
-        default="Raman_dataset/ten_molecules_dataset/train_data.csv",
+        default="Raman_dataset/molecules_9/train_data.csv",
         help="Path to training data with background class",
     )
     parser.add_argument(
         "--val_data_path",
         type=str,
-        default="Raman_dataset/ten_molecules_dataset/val_data.csv",
+        default="Raman_dataset/molecules_9/val_data.csv",
         help="Path to validation data with background class",
     )
     parser.add_argument(
