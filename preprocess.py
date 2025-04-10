@@ -1,5 +1,5 @@
 import os
-
+from typing import List
 import numpy as np
 import pandas as pd
 import tifffile
@@ -167,17 +167,58 @@ def create_combined_dataset(original_csv, bg_csv, output_csv):
     return combined_df
 
 
+def create_train_reference(lipid_csv: str, protein_csv : str, output_csv: str, target_names: List[str]):
+    """
+    Create a reference dataset by selecting specific spectra from lipid and protein libraries.
+
+    Args:
+        lipid_csv (str): Path to the lipid library CSV.
+        protein_csv (str): Path to the protein library CSV.
+        output_csv (str): Path to save the combined reference dataset.
+        target_names (list): List of names to select from the libraries.
+    """
+    lipid_df = pd.read_csv(lipid_csv)
+    protein_df = pd.read_csv(protein_csv)
+
+    # Filter dataframes
+    lipid_filtered = lipid_df[lipid_df['name'].isin(target_names)].copy()
+    protein_filtered = protein_df[protein_df['name'].isin(target_names)].copy()
+
+    # Modify names
+    lipid_filtered['name'] = lipid_filtered['name'] + '_lipid'
+    protein_filtered['name'] = protein_filtered['name'] + '_protein'
+    combined_df = pd.concat([lipid_filtered, protein_filtered], ignore_index=True)
+
+    combined_df.to_csv(output_csv, index=False)
+    print(f"Reference dataset saved to {output_csv} with {len(combined_df)} total samples")
+
+   
+
 if __name__ == "__main__":
-
-    # Augmenting the original trian and val data without background
-    # df_augmented = create_augmented_dataset(
-    #     "Raman_dataset/library.csv", "Raman_dataset/val_data.csv", "background/CD_HSI_76.csv"
+    
+    # --- Create Reference Dataset ---
+    # target_names = ['D7-glucose', 'D2-fructose', 'D-tyrosine', 'D-methionine', 'D-leucine']
+    
+    # create_train_reference(
+    #     lipid_csv="Raman_dataset/raw/CD_lipid_library.csv",
+    #     protein_csv="Raman_dataset/raw/CD_protein_library.csv",
+    #     output_csv="Raman_dataset/ten_molecules_train/train_reference.csv",
+    #     target_names=target_names
     # )
+    # --- End Create Reference Dataset ---
+    
+    
+    # --- Create Augmented Dataset ---
+    # create_augmented_dataset(
+    #     "Raman_dataset/ten_molecules_train/train_reference.csv",
+    #     "Raman_dataset/ten_molecules_train/val_data.csv",
+    #     "background/CD_HSI_76.csv",
+    #     n_augment=200
+    # )
+    # --- End Create Augmented Dataset ---
 
-    # print("Data preprocessing and augmentation completed!")
-    convert_to_csv("Raman_dataset/raw/CD_protein_library.xlsx", "Raman_dataset/raw/CD_protein_library.csv")
-    preprocess_csv("Raman_dataset/raw/CD_protein_library.csv", "Raman_dataset/raw/CD_protein_library.csv")
-    # train_df = pd.read_csv("Raman_dataset/train_data.csv")
+    # -- Extract background spectra ---
+    # train_df = pd.read_csv("Raman_dataset/ten_molecules_train/train_data.csv")
     # wavenumbers = train_df.columns[1:].astype(float).values
     # bg_files = [
     #     "Raman_dataset/background/bg1.tif",
@@ -186,12 +227,20 @@ if __name__ == "__main__":
     # ]
     # extract_bg_spectra(
     #     bg_files=bg_files,
-    #     output_csv="Raman_dataset/val_background_spectra.csv",
+    #     output_csv="Raman_dataset/raw/val_background_spectra.csv",
     #     wavenumbers=wavenumbers,
-    #     total_samples=100,
+    #     total_samples=200
     # )
-    # create_combined_dataset(
-    #     original_csv="Raman_dataset/train_data.csv",
-    #     bg_csv="Raman_dataset/val_background_spectra.csv",
-    #     output_csv="Raman_dataset/val_data_with_bg.csv",
-    # )
+    # --- End Extract background spectra ---
+    
+    # --- Create Combined Dataset ---
+    create_combined_dataset(
+        original_csv="Raman_dataset/ten_molecules_train/val_data.csv",
+        bg_csv="Raman_dataset/raw/val_background_spectra.csv",
+        output_csv="Raman_dataset/ten_molecules_train/val_data_with_bg.csv",
+    )
+    # --- End Create Combined Dataset ---   
+    
+
+   
+  
