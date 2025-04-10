@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 
 from dataload import load_data
-from model import LipidNet
+from model import *
 from utils import *
 
 
@@ -39,7 +39,7 @@ class Infer:
     def load_model(self):
         """Load pretrained model."""
         print("Loading model...")
-        self.model = LipidNet(num_classes=self.args.num_classes)
+        self.model = COMPASS(num_classes=self.args.num_classes)
         checkpoint = torch.load(self.args.model_path, map_location=self.device)
         self.model.load_state_dict(checkpoint["model_state_dict"])
         self.model.eval()

@@ -13,7 +13,7 @@ from tqdm import tqdm
 
 from dataload import create_dataloaders, load_data
 from loss import Loss, Metrics
-from model import LipidNet
+from model import *
 from utils import *
 from vis_utils import *
 
@@ -44,7 +44,7 @@ class Trainer:
         os.makedirs(self.vis_dir, exist_ok=True)
 
     def _prepare_model(self):
-        model = LipidNet(
+        model = COMPASS(
             input_channels=self.args.input_channels,
             base_channels=self.args.base_channels,
             num_classes=self.args.num_classes,

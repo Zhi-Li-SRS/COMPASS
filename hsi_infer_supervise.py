@@ -9,7 +9,7 @@ import torch
 from scipy.interpolate import interp1d
 from tqdm import tqdm
 
-from model import LipidNet
+from model import *
 from utils import normalize_spectrum, set_seed
 
 class HSIPredictor:
@@ -88,7 +88,7 @@ class HSIPredictor:
             raise ValueError("Class names not found in checkpoint")
         
         # Create model with correct number of classes
-        model = LipidNet(num_classes=len(class_names))
+        model = COMPASS(num_classes=len(class_names))
         model.load_state_dict(ckpt["model_state_dict"])
         model.eval()
         print(f"Loaded model with {len(class_names)} classes")

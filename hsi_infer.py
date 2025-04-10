@@ -14,7 +14,7 @@ from scipy.ndimage import minimum_filter
 from scipy.sparse.linalg import spsolve
 from tqdm import tqdm
 
-from model import LipidNet
+from model import *
 from utils import *
 
 
@@ -97,7 +97,7 @@ class HSIPredictor:
         if len(class_names) == 0:
             raise ValueError("Class names not found in checkpoint")
 
-        model = LipidNet(num_classes=len(class_names))
+        model = COMPASS(num_classes=len(class_names))
         model.load_state_dict(ckpt["model_state_dict"])
         model.eval()
         return model.to(self.device), class_names

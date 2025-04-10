@@ -12,7 +12,7 @@ from tqdm import tqdm
 
 from dataload import create_dataloaders
 from loss import Loss
-from model import LipidNet
+from model import *
 from utils import set_seed
 from vis_utils import plot_train_history
 

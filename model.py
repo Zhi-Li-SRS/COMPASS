@@ -68,9 +68,9 @@ class Attention(nn.Module):
         return x, attn
 
 
-class LipidNet(nn.Module):
+class COMPASS(nn.Module):
     """
-    LipidNet model for lipid classification.
+    Model Structure
     """
 
     def __init__(self, input_channels=1, base_channels=8, num_classes=18):
