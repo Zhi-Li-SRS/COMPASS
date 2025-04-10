@@ -6,8 +6,12 @@ import tifffile
 from scipy.interpolate import interp1d
 from tqdm import tqdm
 
+def convert_to_csv(xlsx_path, csv_path):
+    df = pd.read_excel(xlsx_path)
+    df.to_csv(csv_path, index=False)
+    print(f"Successfully converted {xlsx_path} to {csv_path}")
 
-def preprocess_data(input_file, output_file):
+def preprocess_csv(input_file: str, output_file: str):
     """
     Preprocess the spectral data file by transposing and reformatting.
     """
@@ -171,22 +175,23 @@ if __name__ == "__main__":
     # )
 
     # print("Data preprocessing and augmentation completed!")
-
-    train_df = pd.read_csv("Raman_dataset/train_data.csv")
-    wavenumbers = train_df.columns[1:].astype(float).values
-    bg_files = [
-        "Raman_dataset/background/bg1.tif",
-        "Raman_dataset/background/bg2.tif",
-        "Raman_dataset/background/bg3.tif",
-    ]
-    extract_bg_spectra(
-        bg_files=bg_files,
-        output_csv="Raman_dataset/val_background_spectra.csv",
-        wavenumbers=wavenumbers,
-        total_samples=100,
-    )
-    create_combined_dataset(
-        original_csv="Raman_dataset/train_data.csv",
-        bg_csv="Raman_dataset/val_background_spectra.csv",
-        output_csv="Raman_dataset/val_data_with_bg.csv",
-    )
+    convert_to_csv("Raman_dataset/raw/CD_protein_library.xlsx", "Raman_dataset/raw/CD_protein_library.csv")
+    preprocess_csv("Raman_dataset/raw/CD_protein_library.csv", "Raman_dataset/raw/CD_protein_library.csv")
+    # train_df = pd.read_csv("Raman_dataset/train_data.csv")
+    # wavenumbers = train_df.columns[1:].astype(float).values
+    # bg_files = [
+    #     "Raman_dataset/background/bg1.tif",
+    #     "Raman_dataset/background/bg2.tif",
+    #     "Raman_dataset/background/bg3.tif",
+    # ]
+    # extract_bg_spectra(
+    #     bg_files=bg_files,
+    #     output_csv="Raman_dataset/val_background_spectra.csv",
+    #     wavenumbers=wavenumbers,
+    #     total_samples=100,
+    # )
+    # create_combined_dataset(
+    #     original_csv="Raman_dataset/train_data.csv",
+    #     bg_csv="Raman_dataset/val_background_spectra.csv",
+    #     output_csv="Raman_dataset/val_data_with_bg.csv",
+    # )

@@ -107,11 +107,6 @@ def smooth_spectrum(spectrum: np.ndarray, lamda=5):
     return rp.smooth(np.arange(len(spectrum)), smoothed, method="whittaker", Lambda=lamda / 2)
 
 
-def convert_to_csv(xlsx_path, csv_path):
-    df = pd.read_excel(xlsx_path)
-    df.to_csv(csv_path, index=False)
-    print(f"Successfully converted {xlsx_path} to {csv_path}")
-
 
 def set_seed(seed):
     """Set random seed for reproducibility"""
