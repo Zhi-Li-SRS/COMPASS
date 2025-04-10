@@ -16,8 +16,8 @@ COMPASS is a deep learning framework for prediction of dynamic metaboltes derive
 
 1. Clone the repository:
    ```
-   git clone <https://github.com/Zhi-Li-SRS/COMPASS.git>
-   cd <COMPASS>
+   git clone https://github.com/Zhi-Li-SRS/COMPASS.git
+   cd COMPASS
    ```
 
 2. Install dependencies:
