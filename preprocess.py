@@ -151,8 +151,6 @@ if __name__ == "__main__":
         output_file=denoising_path + "train_data.csv",
         background_file="background/water_HSI_76.csv"
     )
-    # lipid = df_augmented.iloc[105:131, 1:].T
-    # plt.plot(lipid)
-    # plt.show()
+
 
     print("Data preprocessing and augmentation completed!")
