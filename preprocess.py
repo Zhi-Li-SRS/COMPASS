@@ -195,6 +195,19 @@ def create_train_reference(lipid_csv: str, protein_csv : str, output_csv: str, t
    
 
 if __name__ == "__main__":
+    #// --- Convert xlsx to csv ---
+    convert_to_csv(
+        xlsx_path="Brain clusters.xlsx",
+        csv_path="brain_clusters.csv"
+    )
+    #// --- End Convert xlsx to csv ---
+    
+    #// --- Preprocess csv ---
+    preprocess_csv(
+        input_file="brain_clusters.csv",
+        output_file="brain_clusters.csv"
+    )
+    #// --- End Preprocess csv ---
     
     # --- Create Reference Dataset ---
     # target_names = ['D7-glucose', 'D2-fructose', 'D-tyrosine', 'D-methionine', 'D-leucine']
@@ -234,11 +247,11 @@ if __name__ == "__main__":
     # --- End Extract background spectra ---
     
     #// --- Create Combined Dataset ---
-    create_combined_dataset(
-        original_csv="Raman_dataset/molecules_9/val_data.csv",
-        bg_csv="Raman_dataset/raw/val_background_spectra.csv",
-        output_csv="Raman_dataset/molecules_9/val_data.csv",
-    )
+    # create_combined_dataset(
+    #     original_csv="Raman_dataset/molecules_9/val_data.csv",
+    #     bg_csv="Raman_dataset/raw/val_background_spectra.csv",
+    #     output_csv="Raman_dataset/molecules_9/val_data.csv",
+    # )
     #// --- End Create Combined Dataset ---   
     
 

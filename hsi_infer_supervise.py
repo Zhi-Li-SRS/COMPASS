@@ -265,13 +265,13 @@ def main():
     parser.add_argument(
         "--model_path",
         type=str,
-        default="checkpoints_lipids_and_protein/best_model.pth",
+        default="checkpoints_with_bg/best_model.pth",
         help="Path to pretrained model",
     )
     parser.add_argument(
         "--library_path", 
         type=str, 
-        default="Raman_dataset/molecules_9/train_reference.csv", 
+        default="Raman_dataset/raw/CD_lipid_library.csv", 
         help="Path to library CSV"
     )
     parser.add_argument(
